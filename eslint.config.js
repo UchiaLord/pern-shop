@@ -1,17 +1,20 @@
 import js from '@eslint/js';
-import importPlugin from 'eslint-plugin-import';
 import prettier from 'eslint-config-prettier';
+import importPlugin from 'eslint-plugin-import';
+import globals from 'globals';
 
 export default [
   js.configs.recommended,
+  prettier,
   {
     plugins: { import: importPlugin },
-    rules: {
-      'import/order': [
-        'warn',
-        { 'newlines-between': 'always', alphabetize: { order: 'asc' } },
-      ],
+    languageOptions: {
+      globals: {
+        ...globals.node
+      }
     },
-  },
-  prettier,
+    rules: {
+      'import/order': ['warn', { 'newlines-between': 'always' }]
+    }
+  }
 ];
