@@ -16,6 +16,8 @@ import { NotFoundError, BadRequestError } from './errors/common.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 import { validate } from './middleware/validate.js';
+import { applySecurityMiddleware } from './middleware/security.js';
+import { JSON_BODY_LIMIT } from './config/security.js';
 
 /**
  * Factory zur Erstellung einer Express-App.
@@ -24,6 +26,14 @@ import { validate } from './middleware/validate.js';
  */
 export function createApp() {
   const app = express();
+
+  app.use(requestIdMiddleware);
+
+  // Security BEFORE body parsing & routes
+  applySecurityMiddleware(app);
+
+  // JSON Parser mit Limit
+  app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
   /**
    * Request-ID Middleware MUSS vor Body-Parsing laufen.
@@ -64,12 +74,12 @@ export function createApp() {
     '/echo',
     validate({
       body: z.object({
-        message: z.string().min(1)
-      })
+        message: z.string().min(1),
+      }),
     }),
     (req, res) => {
       res.status(200).json({ message: req.body.message });
-    }
+    },
   );
 
   app.use((_req, _res, next) => next(new NotFoundError()));
