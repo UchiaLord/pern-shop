@@ -1,12 +1,11 @@
 {
-  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
+    "allowJs": true,
+    "checkJs": false,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "types": ["node"],
-    "noEmitOnError": true
+    "noEmit": true,
+    "types": ["node"]
   },
-  "include": ["src", "test"]
+  "include": ["src/**/*.js", "test/**/*.js"]
 }
