@@ -20,6 +20,9 @@ importers:
       eslint-plugin-import:
         specifier: ^2.32.0
         version: 2.32.0(eslint@9.39.2)
+      globals:
+        specifier: ^17.0.0
+        version: 17.0.0
       prettier:
         specifier: ^3.7.4
         version: 3.7.4
@@ -32,6 +35,9 @@ importers:
       express:
         specifier: ^5.2.1
         version: 5.2.1
+      zod:
+        specifier: ^4.3.5
+        version: 4.3.5
     devDependencies:
       '@types/express':
         specifier: ^5.0.6
@@ -959,6 +965,10 @@ packages:
     resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
     engines: {node: '>=18'}
 
+  globals@17.0.0:
+    resolution: {integrity: sha512-gv5BeD2EssA793rlFWVPMMCqefTlpusw6/2TbAVMy0FzcG8wKJn4O+NqJ4+XWmmwrayJgw5TzrmWjFgmz1XPqw==}
+    engines: {node: '>=18'}
+
   globalthis@1.0.4:
     resolution: {integrity: sha512-DpLKbNU4WylpxJykQujfCcwYWiV/Jhm50Goo0wrVILAv5jOr9d+H+UR3PhSCD2rCCEIg0uc+G+muBTwD54JhDQ==}
     engines: {node: '>= 0.4'}
@@ -1502,6 +1512,7 @@ packages:
   supertest@7.2.1:
     resolution: {integrity: sha512-/OfhUL9WRLfoovZuWJ4l+2GVz3Eoo8Eo2TZVs9QxF2kmxdrmK7rCww4iJBstHevUH/M44aJ9TMN7yB+W+oWxlA==}
     engines: {node: '>=14.18.0'}
+    deprecated: Please upgrade to v7.2.2+ as we fixed an issue https://github.com/forwardemail/supertest/issues/875
 
   supports-color@7.2.0:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
@@ -2644,6 +2655,8 @@ snapshots:
       is-glob: 4.0.3
 
   globals@14.0.0: {}
+
+  globals@17.0.0: {}
 
   globalthis@1.0.4:
     dependencies:
