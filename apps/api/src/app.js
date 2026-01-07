@@ -20,6 +20,8 @@ import { validate } from './middleware/validate.js';
 import { applySecurityMiddleware } from './middleware/security.js';
 import { JSON_BODY_LIMIT } from './config/security.js';
 import { createSessionMiddleware } from './middleware/session.js';
+import { authRouter } from './routes/auth.js';
+import { requireRole } from './middleware/require-role.js';
 
 /**
  * Factory zur Erstellung einer Express-App.
@@ -29,6 +31,10 @@ import { createSessionMiddleware } from './middleware/session.js';
 export function createApp() {
   const app = express();
 
+  /**
+   * Request-ID Middleware MUSS vor Body-Parsing laufen.
+   * Bei kaputtem JSON wollen wir trotzdem eine requestId.
+   */
   app.use(requestIdMiddleware);
 
   // Security BEFORE body parsing & routes
@@ -37,44 +43,49 @@ export function createApp() {
   // JSON Parser mit Limit
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
-  /**
-   * Request-ID Middleware MUSS vor Body-Parsing laufen.
-   *
-   * Warum:
-   * - Bei kaputtem JSON wirft `express.json()` bevor nachfolgende Middleware läuft.
-   * - Wir wollen trotzdem eine requestId für Debugging/Tracing garantieren.
-   */
-  app.use(requestIdMiddleware);
-
-  /**
-   * JSON-Parser für Request Bodies.
-   *
-   * Hinweis:
-   * - Ungültiges JSON löst einen Fehler aus (SyntaxError).
-   */
-  app.use(express.json());
-
-  /**
-   * Parser-Fehler (z. B. invalid JSON) in unseren Contract übersetzen.
-   *
-   * Wichtig:
-   * - Dies ist eine Error-Middleware (4 Parameter), daher greift sie nur bei Fehlern.
-   * - Sie muss direkt nach express.json() stehen.
-   */
-
-  // Wenn später hinter Proxy (z.B. Render/Fly/NGINX) betrieben:
-  // Damit secure cookies korrekt funktionieren.
+  // Wenn später hinter Proxy:
   app.set('trust proxy', 1);
 
-  // Session Middleware (Postgres Store)
+  // Session Middleware (Postgres Store) MUSS vor /auth liegen
   app.use(createSessionMiddleware());
 
+  // Parser-Fehler (invalid JSON) in unseren Contract übersetzen
   app.use((err, _req, _res, next) => {
     if (err instanceof SyntaxError) {
       return next(new BadRequestError('Ungültiges JSON', err));
     }
     return next(err);
   });
+
+  // Routen
+  app.use('/auth', authRouter);
+
+  /**
+   * Test-only Route für RBAC.
+   * Wird ausschließlich im Test-Modus registriert.
+   */
+  /**
+   * Test-only Route für RBAC.
+   * Wird ausschließlich im Test-Modus registriert.
+   */
+  if (process.env.NODE_ENV === 'test') {
+    app.get('/__test__/admin-only', requireRole('admin'), (_req, res) => {
+      res.status(200).json({ ok: true });
+    });
+
+    app.post('/__test__/set-role', (req, res) => {
+      const role = req.body?.role;
+
+      if (!req.session?.user) {
+        return res.status(401).json({
+          error: { code: 'UNAUTHENTICATED', message: 'Nicht eingeloggt.' },
+        });
+      }
+
+      req.session.user.role = role;
+      return res.status(200).json({ ok: true, role });
+    });
+  }
 
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
