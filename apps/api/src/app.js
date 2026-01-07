@@ -9,6 +9,7 @@
  * Nicht-Verantwortung:
  * - Startet keinen HTTP-Server (kein listen) -> das macht `server.js`
  */
+import 'dotenv/config';
 import express from 'express';
 import { z } from 'zod';
 
@@ -18,6 +19,7 @@ import { requestIdMiddleware } from './middleware/request-id.js';
 import { validate } from './middleware/validate.js';
 import { applySecurityMiddleware } from './middleware/security.js';
 import { JSON_BODY_LIMIT } from './config/security.js';
+import { createSessionMiddleware } from './middleware/session.js';
 
 /**
  * Factory zur Erstellung einer Express-App.
@@ -59,6 +61,14 @@ export function createApp() {
    * - Dies ist eine Error-Middleware (4 Parameter), daher greift sie nur bei Fehlern.
    * - Sie muss direkt nach express.json() stehen.
    */
+
+  // Wenn später hinter Proxy (z.B. Render/Fly/NGINX) betrieben:
+  // Damit secure cookies korrekt funktionieren.
+  app.set('trust proxy', 1);
+
+  // Session Middleware (Postgres Store)
+  app.use(createSessionMiddleware());
+
   app.use((err, _req, _res, next) => {
     if (err instanceof SyntaxError) {
       return next(new BadRequestError('Ungültiges JSON', err));

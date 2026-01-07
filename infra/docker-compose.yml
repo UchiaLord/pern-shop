@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: pern_shop_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pern_shop
+      POSTGRES_USER: pern_app
+      POSTGRES_PASSWORD: pern_app_password
+    ports:
+      - '5433:5432'
+    volumes:
+      - pern_shop_pgdata:/var/lib/postgresql/data
+volumes:
+  pern_shop_pgdata:
