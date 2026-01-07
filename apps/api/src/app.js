@@ -64,10 +64,7 @@ export function createApp() {
    * Test-only Route für RBAC.
    * Wird ausschließlich im Test-Modus registriert.
    */
-  /**
-   * Test-only Route für RBAC.
-   * Wird ausschließlich im Test-Modus registriert.
-   */
+
   if (process.env.NODE_ENV === 'test') {
     app.get('/__test__/admin-only', requireRole('admin'), (_req, res) => {
       res.status(200).json({ ok: true });

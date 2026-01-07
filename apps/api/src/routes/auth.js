@@ -1,6 +1,9 @@
 import express from 'express';
 
-import { createUser, findUserByEmail } from '../db/repositories/user-repository.js';
+import {
+  createUser,
+  findUserByEmail,
+} from '../db/repositories/user-repository.js';
 import { requireAuth } from '../middleware/require-auth.js';
 import { SESSION_COOKIE_NAME } from '../middleware/session.js';
 import { asyncHandler } from '../utils/async-handler.js';
@@ -19,11 +22,14 @@ function validateRegisterBody(body) {
   const details = {};
   if (!email) details.email = 'E-Mail ist erforderlich.';
   if (email && email.length > 254) details.email = 'E-Mail ist zu lang.';
-  if (email && !/^\S+@\S+\.\S+$/.test(email)) details.email = 'E-Mail ist ungültig.';
+  if (email && !/^\S+@\S+\.\S+$/.test(email))
+    details.email = 'E-Mail ist ungültig.';
 
   if (!password) details.password = 'Passwort ist erforderlich.';
-  if (password && password.length < 10) details.password = 'Passwort muss mindestens 10 Zeichen haben.';
-  if (password && password.length > 200) details.password = 'Passwort ist zu lang.';
+  if (password && password.length < 10)
+    details.password = 'Passwort muss mindestens 10 Zeichen haben.';
+  if (password && password.length > 200)
+    details.password = 'Passwort ist zu lang.';
 
   if (Object.keys(details).length > 0) {
     return { ok: false, details };
@@ -47,7 +53,11 @@ authRouter.post(
     const validated = validateRegisterBody(req.body);
     if (!validated.ok) {
       return res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Ungültige Eingaben.', details: validated.details },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Ungültige Eingaben.',
+          details: validated.details,
+        },
       });
     }
 
@@ -57,14 +67,21 @@ authRouter.post(
       const user = await createUser({ email: validated.email, passwordHash });
 
       // Session setzen (direkt eingeloggt)
-      req.session.user = { id: user.id, email: user.email, role: user.role };
+      req.session.user = {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      };
 
       return res.status(201).json({ user });
     } catch (err) {
       // Postgres unique violation -> Email bereits vergeben
       if (err && typeof err === 'object' && err.code === '23505') {
         return res.status(409).json({
-          error: { code: 'EMAIL_TAKEN', message: 'E-Mail ist bereits registriert.' },
+          error: {
+            code: 'EMAIL_TAKEN',
+            message: 'E-Mail ist bereits registriert.',
+          },
         });
       }
       throw err;
@@ -82,21 +99,31 @@ authRouter.post(
     const validated = validateLoginBody(req.body);
     if (!validated.ok) {
       return res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Ungültige Eingaben.', details: validated.details },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Ungültige Eingaben.',
+          details: validated.details,
+        },
       });
     }
 
     const user = await findUserByEmail(validated.email);
     if (!user) {
       return res.status(401).json({
-        error: { code: 'INVALID_CREDENTIALS', message: 'E-Mail oder Passwort ist falsch.' },
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: 'E-Mail oder Passwort ist falsch.',
+        },
       });
     }
 
     const ok = await verifyPassword(validated.password, user.passwordHash);
     if (!ok) {
       return res.status(401).json({
-        error: { code: 'INVALID_CREDENTIALS', message: 'E-Mail oder Passwort ist falsch.' },
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: 'E-Mail oder Passwort ist falsch.',
+        },
       });
     }
 
@@ -108,7 +135,11 @@ authRouter.post(
       });
     });
 
-    req.session.user = { id: user.id, email: user.email, role: user.role };
+    req.session.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    };
 
     return res.status(200).json({
       user: { id: user.id, email: user.email, role: user.role },

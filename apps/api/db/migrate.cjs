@@ -106,7 +106,7 @@ async function run() {
       const id = file;
       console.log(`[migrate] prüfe ${id}`);
 
-      // eslint-disable-next-line no-await-in-loop
+ 
       const applied = await isApplied(client, id);
       if (applied) {
         console.log(`[migrate] skip ${id}`);
@@ -118,10 +118,10 @@ async function run() {
 
       console.log(`[migrate] apply ${id}`);
 
-      // eslint-disable-next-line no-await-in-loop
+    
       await client.query(sql);
 
-      // eslint-disable-next-line no-await-in-loop
+    
       await markApplied(client, id);
 
       console.log(`[migrate] done ${id}`);
