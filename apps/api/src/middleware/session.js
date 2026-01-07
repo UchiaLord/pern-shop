@@ -17,19 +17,29 @@
 
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
+
 import { pool } from '../db/pool.js';
 
 const PgSession = connectPgSimple(session);
 
 /**
+ * Einheitlicher Cookie-Name für Sessions.
+ *
+ * Warum:
+ * - Logout muss exakt den gleichen Cookie-Namen löschen, den express-session setzt.
+ * - Wenn du den Cookie-Namen später änderst, musst du ihn nur an einer Stelle anpassen.
+ */
+export const SESSION_COOKIE_NAME = 'pern.sid';
+
+/**
  * Erzeugt die konfigurierte Session-Middleware.
  *
  * @param {Object} [opts]
- * @param {string} [opts.cookieName] - Cookie-Name (Default: 'pern.sid')
+ * @param {string} [opts.cookieName] - Cookie-Name (Default: SESSION_COOKIE_NAME)
  * @returns {import('express').RequestHandler}
  */
 export function createSessionMiddleware(opts = {}) {
-  const cookieName = opts.cookieName ?? 'pern.sid';
+  const cookieName = opts.cookieName ?? SESSION_COOKIE_NAME;
 
   if (!process.env.SESSION_SECRET) {
     throw new Error('SESSION_SECRET fehlt. Lege ihn in apps/api/.env fest.');
