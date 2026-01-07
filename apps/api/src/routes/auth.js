@@ -39,9 +39,27 @@ function validateRegisterBody(body) {
 }
 
 function validateLoginBody(body) {
-  // Gleiche Regeln wie register, aber ohne "password strength"-Diskussion.
-  return validateRegisterBody(body);
+  const email = typeof body?.email === 'string' ? body.email.trim() : '';
+  const password = typeof body?.password === 'string' ? body.password : '';
+
+  const details = {};
+  if (!email) details.email = 'E-Mail ist erforderlich.';
+  if (email && email.length > 254) details.email = 'E-Mail ist zu lang.';
+  if (email && !/^\S+@\S+\.\S+$/.test(email))
+    details.email = 'E-Mail ist ungültig.';
+
+  if (!password) details.password = 'Passwort ist erforderlich.';
+  if (password && password.length > 200)
+    details.password = 'Passwort ist zu lang.';
+
+  if (Object.keys(details).length > 0) {
+    return { ok: false, details };
+  }
+
+  return { ok: true, email, password };
 }
+
+
 
 /**
  * POST /auth/register
