@@ -22,6 +22,7 @@ import { JSON_BODY_LIMIT } from './config/security.js';
 import { createSessionMiddleware } from './middleware/session.js';
 import { authRouter } from './routes/auth.js';
 import { requireRole } from './middleware/require-role.js';
+import { productsRouter } from './routes/products.js';
 
 /**
  * Factory zur Erstellung einer Express-App.
@@ -59,6 +60,7 @@ export function createApp() {
 
   // Routen
   app.use('/auth', authRouter);
+  app.use('/products', productsRouter);
 
   /**
    * Test-only Route für RBAC.
