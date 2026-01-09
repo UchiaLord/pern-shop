@@ -4,6 +4,17 @@ import importPlugin from 'eslint-plugin-import';
 import globals from 'globals';
 
 export default [
+   {
+    ignores: [
+      '**/dist/**',
+      '**/build/**',
+      '**/coverage/**',
+      '**/.turbo/**',
+      '**/.vite/**',
+      '**/node_modules/**',
+      '**/*.min.*',
+    ],
+  },
   js.configs.recommended,
   prettier,
   {
