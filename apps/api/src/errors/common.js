@@ -1,35 +1,21 @@
-/**
- * Häufig verwendete Fehlerklassen (Typed Errors).
- *
- * Zweck:
- * - Konsistente Fehlererzeugung ohne Magic Numbers/Strings in Routen
- */
 import { HttpError } from './http-error.js';
 
-/**
- * 400 Bad Request.
- * Typische Fälle: Validierungsfehler, semantisch ungültige Eingaben.
- */
 export class BadRequestError extends HttpError {
   /**
-   * @param {string} [message]
-   * @param {unknown} [details]
+   * @param {string} message
+   * @param {any=} meta - kann { code, details } oder ein cause sein
    */
-  constructor(message = 'Bad request', details) {
-    super({ status: 400, code: 'BAD_REQUEST', message, details });
-  }
-}
+  constructor(message = 'Bad request', meta) {
+    const code = meta?.code || 'BAD_REQUEST';
+    const details = meta?.details;
 
-/**
- * 404 Not Found.
- * Typische Fälle: Unbekannte Route oder Ressource existiert nicht.
- */
-export class NotFoundError extends HttpError {
-  /**
-   * @param {string} [message]
-   * @param {unknown} [details]
-   */
-  constructor(message = 'Not found', details) {
-    super({ status: 404, code: 'NOT_FOUND', message, details });
+    super({
+      status: 400,
+      code,
+      message,
+      details
+    });
+
+    this.cause = meta;
   }
 }
