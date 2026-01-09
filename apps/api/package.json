@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate": "node db/migrate.cjs"
+    "migrate": "node db/migrate.cjs",
+    "check": "pnpm -C apps/api run test && pnpm -C apps/web run build && pnpm run lint"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
