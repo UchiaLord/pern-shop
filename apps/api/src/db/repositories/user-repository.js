@@ -6,6 +6,8 @@ import { pool } from '../pool.js';
 export async function createUser({ email, passwordHash }) {
   const client = await pool.connect();
 
+  const normalizedEmail = String(email ?? '').trim().toLowerCase();
+
   try {
     await client.query('BEGIN');
 
@@ -16,7 +18,7 @@ export async function createUser({ email, passwordHash }) {
       VALUES ($1, $2)
       RETURNING id, email
       `,
-      [email, passwordHash],
+      [normalizedEmail, passwordHash]
     );
 
     const user = userResult.rows[0];
@@ -28,7 +30,7 @@ export async function createUser({ email, passwordHash }) {
       FROM roles
       WHERE key = 'customer'
       LIMIT 1
-      `,
+      `
     );
 
     if (roleResult.rowCount === 0) {
@@ -43,7 +45,7 @@ export async function createUser({ email, passwordHash }) {
       INSERT INTO user_roles (user_id, role_id)
       VALUES ($1, $2)
       `,
-      [user.id, role.id],
+      [user.id, role.id]
     );
 
     await client.query('COMMIT');
@@ -51,7 +53,7 @@ export async function createUser({ email, passwordHash }) {
     return {
       id: user.id,
       email: user.email,
-      role: role.key,
+      role: role.key
     };
   } catch (err) {
     await client.query('ROLLBACK');
@@ -62,7 +64,7 @@ export async function createUser({ email, passwordHash }) {
 }
 
 /**
- * Findet einen Benutzer inkl. Rolle anhand der E-Mail.
+ * Findet einen Benutzer inkl. Rolle anhand der E-Mail (case-insensitive).
  */
 export async function findUserByEmail(email) {
   const result = await pool.query(
@@ -75,10 +77,10 @@ export async function findUserByEmail(email) {
     FROM users u
     JOIN user_roles ur ON ur.user_id = u.id
     JOIN roles r ON r.id = ur.role_id
-    WHERE u.email = $1
+    WHERE LOWER(u.email) = LOWER($1)
     LIMIT 1
     `,
-    [email],
+    [String(email ?? '').trim()]
   );
 
   if (result.rowCount === 0) return null;
@@ -89,6 +91,6 @@ export async function findUserByEmail(email) {
     id: row.id,
     email: row.email,
     passwordHash: row.password_hash,
-    role: row.role,
+    role: row.role
   };
 }
