@@ -7,11 +7,20 @@ import RegisterPage from './pages/RegisterPage';
 import ProductsPage from './pages/ProductsPage';
 import CartPage from './pages/CartPage';
 import OrdersPage from './pages/OrdersPage';
+import AdminProductsPage from './pages/AdminProductsPage';
 
 function Protected({ children }: { children: React.ReactElement }) {
   const { user, isLoading } = useAuth();
   if (isLoading) return <div>Lade...</div>;
   if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function AdminOnly({ children }: { children: React.ReactElement }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return <div>Lade...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'admin') return <Navigate to="/products" replace />;
   return children;
 }
 
@@ -24,6 +33,8 @@ export default function App() {
         <Link to="/products">Products</Link>
         <Link to="/cart">Cart</Link>
         <Link to="/orders">Orders</Link>
+
+        {user?.role === 'admin' ? <Link to="/admin/products">Admin</Link> : null}
 
         {!user ? (
           <>
@@ -45,6 +56,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/products" replace />} />
         <Route path="/products" element={<ProductsPage />} />
+
         <Route
           path="/cart"
           element={
@@ -53,6 +65,7 @@ export default function App() {
             </Protected>
           }
         />
+
         <Route
           path="/orders"
           element={
@@ -61,6 +74,16 @@ export default function App() {
             </Protected>
           }
         />
+
+        <Route
+          path="/admin/products"
+          element={
+            <AdminOnly>
+              <AdminProductsPage />
+            </AdminOnly>
+          }
+        />
+
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
       </Routes>
