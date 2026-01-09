@@ -6,10 +6,6 @@
  * - CORS (Whitelist + credentials-ready)
  * - Rate Limiting (global)
  * - HPP Schutz
- * - JSON Body Limit
- *
- * Design:
- * - Als eigene Funktion exportiert, damit app.js nur "useSecurity(app)" macht.
  */
 
 import cors from 'cors';
@@ -18,6 +14,11 @@ import helmet from 'helmet';
 import hpp from 'hpp';
 
 import { CORS_ALLOWED_ORIGINS, RATE_LIMIT } from '../config/security.js';
+
+function normalizeOrigin(origin) {
+  if (!origin) return origin;
+  return origin.endsWith('/') ? origin.slice(0, -1) : origin;
+}
 
 /**
  * CORS Origin-Check als Callback.
@@ -29,7 +30,8 @@ import { CORS_ALLOWED_ORIGINS, RATE_LIMIT } from '../config/security.js';
 function corsOriginCheck(origin, callback) {
   if (!origin) return callback(null, true);
 
-  const allowed = CORS_ALLOWED_ORIGINS.includes(origin);
+  const normalized = normalizeOrigin(origin);
+  const allowed = CORS_ALLOWED_ORIGINS.map(normalizeOrigin).includes(normalized);
   return callback(allowed ? null : new Error('CORS blocked'), allowed);
 }
 
@@ -42,8 +44,6 @@ export function applySecurityMiddleware(app) {
   // 1) Security Headers
   app.use(
     helmet({
-      // CSP in APIs oft deaktiviert, weil es primär HTML schützt.
-      // Später, wenn wir SSR/HTML ausliefern, konfigurieren wir CSP sauber.
       contentSecurityPolicy: false
     })
   );
@@ -57,7 +57,8 @@ export function applySecurityMiddleware(app) {
       origin: corsOriginCheck,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id']
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+      exposedHeaders: ['X-Request-Id']
     })
   );
 
@@ -70,15 +71,4 @@ export function applySecurityMiddleware(app) {
       legacyHeaders: false
     })
   );
-
-  // 5) JSON Body Limit (muss VOR routes laufen)
-  app.use((req, res, next) => {
-    // Wir setzen nicht direkt express.json hier, sondern konfigurieren das in app.js,
-    // damit JSON-Parser-Error Handling dort bleibt. Hier nur "Limit" als Konstante.
-    // Diese Middleware ist ein Platzhalter für ein klares Security-Bundle.
-    return next();
-  });
-
-  // Hinweis: JSON Parser selbst bleibt in app.js, aber mit limit.
-  // So behalten wir unsere SyntaxError->BadRequest Übersetzung an einem Ort.
 }
