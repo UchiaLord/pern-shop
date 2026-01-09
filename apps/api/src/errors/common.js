@@ -19,3 +19,16 @@ export class BadRequestError extends HttpError {
     this.cause = meta;
   }
 }
+
+export class NotFoundError extends HttpError {
+  /**
+   * @param {string=} message
+   */
+  constructor(message = 'Not found') {
+    super({
+      status: 404,
+      code: 'NOT_FOUND',
+      message
+    });
+  }
+}
