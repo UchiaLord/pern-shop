@@ -8,13 +8,13 @@ import { NotFoundError } from '../errors/common.js';
 import {
   createOrderFromCart,
   getOrderDetails,
-  listOrdersByUser,
+  listOrdersByUser
 } from '../db/repositories/order-repository.js';
 
 export const ordersRouter = express.Router();
 
 const orderIdParams = z.object({
-  id: z.coerce.number().int().positive(),
+  id: z.coerce.number().int().positive()
 });
 
 function ensureCart(req) {
@@ -33,51 +33,14 @@ ordersRouter.post(
   asyncHandler(async (req, res) => {
     const cart = ensureCart(req);
 
-    try {
-      const userId = Number(req.session.user.id);
-      const result = await createOrderFromCart(userId, cart.items);
+    const userId = Number(req.session.user.id);
+    const result = await createOrderFromCart(userId, cart.items);
 
-      // Cart leeren nach erfolgreichem Checkout
-      req.session.cart = { items: [] };
+    // Cart leeren nach erfolgreichem Checkout
+    req.session.cart = { items: [] };
 
-      res.status(201).json(result);
-    } catch (err) {
-      // Domain-Errors aus Repository in Contract übersetzen
-      if (err && typeof err === 'object') {
-        if (err.code === 'CART_EMPTY') {
-          return res.status(400).json({
-            error: { code: 'CART_EMPTY', message: 'Warenkorb ist leer.' },
-          });
-        }
-        if (err.code === 'PRODUCT_NOT_FOUND') {
-          return res.status(400).json({
-            error: {
-              code: 'PRODUCT_NOT_FOUND',
-              message: 'Ein Produkt im Warenkorb existiert nicht.',
-            },
-          });
-        }
-        if (err.code === 'PRODUCT_INACTIVE') {
-          return res.status(400).json({
-            error: {
-              code: 'PRODUCT_INACTIVE',
-              message: 'Ein Produkt im Warenkorb ist nicht aktiv.',
-            },
-          });
-        }
-        if (err.code === 'MIXED_CURRENCY') {
-          return res.status(400).json({
-            error: {
-              code: 'MIXED_CURRENCY',
-              message: 'Währungen im Warenkorb dürfen nicht gemischt werden.',
-            },
-          });
-        }
-      }
-
-      throw err;
-    }
-  }),
+    res.status(201).json(result);
+  })
 );
 
 /**
@@ -91,7 +54,7 @@ ordersRouter.get(
     const userId = Number(req.session.user.id);
     const orders = await listOrdersByUser(userId);
     res.status(200).json({ orders });
-  }),
+  })
 );
 
 /**
@@ -110,5 +73,5 @@ ordersRouter.get(
     if (!details) throw new NotFoundError('Bestellung nicht gefunden.');
 
     res.status(200).json(details);
-  }),
+  })
 );

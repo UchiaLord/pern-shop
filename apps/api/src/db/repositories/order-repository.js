@@ -1,4 +1,5 @@
 import { pool } from '../pool.js';
+import { HttpError } from '../../errors/http-error.js';
 
 /**
  * Erzeugt eine Order aus Cart-Items.
@@ -14,58 +15,93 @@ export async function createOrderFromCart(userId, cartItems) {
   try {
     await client.query('BEGIN');
 
+    // Guard: Cart muss existieren und Items enthalten
     if (!Array.isArray(cartItems) || cartItems.length === 0) {
-      const err = new Error('Warenkorb ist leer.');
-      err.code = 'CART_EMPTY';
-      throw err;
+      throw new HttpError({
+        status: 400,
+        code: 'BAD_REQUEST',
+        message: 'Warenkorb ist leer.',
+        details: { code: 'CART_EMPTY' }
+      });
     }
 
-    const productIds = cartItems.map((i) => i.productId);
+    // Normalisieren + Basisvalidierung
+    const normalizedCart = cartItems.map((i) => ({
+      productId: Number(i.productId),
+      quantity: Number(i.quantity)
+    }));
 
-    // Produkte laden (nur aktive)
+    for (const item of normalizedCart) {
+      if (!Number.isInteger(item.productId) || item.productId <= 0) {
+        throw new HttpError({
+          status: 400,
+          code: 'VALIDATION_ERROR',
+          message: 'Ungültige Cart-Items.',
+          details: { productId: 'productId muss eine positive ganze Zahl sein.' }
+        });
+      }
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+        throw new HttpError({
+          status: 400,
+          code: 'VALIDATION_ERROR',
+          message: 'Ungültige Cart-Items.',
+          details: { quantity: 'quantity muss eine positive ganze Zahl sein.' }
+        });
+      }
+    }
+
+    const productIds = normalizedCart.map((i) => i.productId);
+
+    // Produkte laden (existierende; Aktiv-Check folgt separat)
     const productsRes = await client.query(
       `
       SELECT id, sku, name, price_cents, currency, is_active
       FROM products
       WHERE id = ANY($1::bigint[])
       `,
-      [productIds],
+      [productIds]
     );
 
-    const productsById = new Map(
-      productsRes.rows.map((p) => [Number(p.id), p]),
-    );
+    const productsById = new Map(productsRes.rows.map((p) => [Number(p.id), p]));
 
     // Validierung: alle existieren, aktiv, currency konsistent
     let currency = null;
 
-    const normalizedItems = cartItems.map((ci) => {
+    const normalizedItems = normalizedCart.map((ci) => {
       const p = productsById.get(ci.productId);
+
       if (!p) {
-        const err = new Error(`Produkt ${ci.productId} existiert nicht.`);
-        err.code = 'PRODUCT_NOT_FOUND';
-        err.meta = { productId: ci.productId };
-        throw err;
+        throw new HttpError({
+          status: 400,
+          code: 'BAD_REQUEST',
+          message: 'Ein Produkt im Warenkorb existiert nicht.',
+          details: { code: 'PRODUCT_NOT_FOUND', productId: ci.productId }
+        });
       }
+
       if (!p.is_active) {
-        const err = new Error(`Produkt ${ci.productId} ist nicht aktiv.`);
-        err.code = 'PRODUCT_INACTIVE';
-        err.meta = { productId: ci.productId };
-        throw err;
+        throw new HttpError({
+          status: 400,
+          code: 'BAD_REQUEST',
+          message: 'Ein Produkt im Warenkorb ist nicht aktiv.',
+          details: { code: 'PRODUCT_INACTIVE', productId: ci.productId }
+        });
       }
 
       const pCurrency = p.currency ?? 'EUR';
       if (!currency) currency = pCurrency;
+
       if (currency !== pCurrency) {
-        const err = new Error(
-          'Währungen im Warenkorb dürfen nicht gemischt werden.',
-        );
-        err.code = 'MIXED_CURRENCY';
-        throw err;
+        throw new HttpError({
+          status: 400,
+          code: 'BAD_REQUEST',
+          message: 'Währungen im Warenkorb dürfen nicht gemischt werden.',
+          details: { code: 'MIXED_CURRENCY' }
+        });
       }
 
       const unitPriceCents = Number(p.price_cents);
-      const quantity = Number(ci.quantity);
+      const quantity = ci.quantity;
       const lineTotalCents = unitPriceCents * quantity;
 
       return {
@@ -75,14 +111,11 @@ export async function createOrderFromCart(userId, cartItems) {
         currency: pCurrency,
         unitPriceCents,
         quantity,
-        lineTotalCents,
+        lineTotalCents
       };
     });
 
-    const subtotalCents = normalizedItems.reduce(
-      (sum, i) => sum + i.lineTotalCents,
-      0,
-    );
+    const subtotalCents = normalizedItems.reduce((sum, i) => sum + i.lineTotalCents, 0);
 
     // Order anlegen
     const orderRes = await client.query(
@@ -91,7 +124,7 @@ export async function createOrderFromCart(userId, cartItems) {
       VALUES ($1, 'created', $2, $3)
       RETURNING id, user_id, status, currency, subtotal_cents, created_at
       `,
-      [userId, currency ?? 'EUR', subtotalCents],
+      [userId, currency ?? 'EUR', subtotalCents]
     );
 
     const orderRow = orderRes.rows[0];
@@ -114,8 +147,8 @@ export async function createOrderFromCart(userId, cartItems) {
           item.unitPriceCents,
           item.currency,
           item.quantity,
-          item.lineTotalCents,
-        ],
+          item.lineTotalCents
+        ]
       );
     }
 
@@ -128,9 +161,9 @@ export async function createOrderFromCart(userId, cartItems) {
         status: orderRow.status,
         currency: orderRow.currency,
         subtotalCents: Number(orderRow.subtotal_cents),
-        createdAt: orderRow.created_at,
+        createdAt: orderRow.created_at
       },
-      items: normalizedItems,
+      items: normalizedItems
     };
   } catch (err) {
     await client.query('ROLLBACK');
@@ -154,7 +187,7 @@ export async function listOrdersByUser(userId) {
     WHERE user_id = $1
     ORDER BY id DESC
     `,
-    [userId],
+    [userId]
   );
 
   return res.rows.map((r) => ({
@@ -162,7 +195,7 @@ export async function listOrdersByUser(userId) {
     status: r.status,
     currency: r.currency,
     subtotalCents: Number(r.subtotal_cents),
-    createdAt: r.created_at,
+    createdAt: r.created_at
   }));
 }
 
@@ -180,7 +213,7 @@ export async function getOrderDetails(userId, orderId) {
     WHERE id = $1 AND user_id = $2
     LIMIT 1
     `,
-    [orderId, userId],
+    [orderId, userId]
   );
 
   if (orderRes.rowCount === 0) return null;
@@ -194,7 +227,7 @@ export async function getOrderDetails(userId, orderId) {
     WHERE order_id = $1
     ORDER BY product_id ASC
     `,
-    [orderId],
+    [orderId]
   );
 
   return {
@@ -204,7 +237,7 @@ export async function getOrderDetails(userId, orderId) {
       status: o.status,
       currency: o.currency,
       subtotalCents: Number(o.subtotal_cents),
-      createdAt: o.created_at,
+      createdAt: o.created_at
     },
     items: itemsRes.rows.map((r) => ({
       productId: Number(r.product_id),
@@ -213,7 +246,7 @@ export async function getOrderDetails(userId, orderId) {
       unitPriceCents: Number(r.unit_price_cents),
       currency: r.currency,
       quantity: Number(r.quantity),
-      lineTotalCents: Number(r.line_total_cents),
-    })),
+      lineTotalCents: Number(r.line_total_cents)
+    }))
   };
 }
