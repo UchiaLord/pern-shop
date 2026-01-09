@@ -15,17 +15,14 @@ export async function createOrderFromCart(userId, cartItems) {
   try {
     await client.query('BEGIN');
 
-    // Guard: Cart muss existieren und Items enthalten
     if (!Array.isArray(cartItems) || cartItems.length === 0) {
       throw new HttpError({
         status: 400,
-        code: 'BAD_REQUEST',
-        message: 'Warenkorb ist leer.',
-        details: { code: 'CART_EMPTY' }
+        code: 'CART_EMPTY',
+        message: 'Warenkorb ist leer.'
       });
     }
 
-    // Normalisieren + Basisvalidierung
     const normalizedCart = cartItems.map((i) => ({
       productId: Number(i.productId),
       quantity: Number(i.quantity)
@@ -52,7 +49,6 @@ export async function createOrderFromCart(userId, cartItems) {
 
     const productIds = normalizedCart.map((i) => i.productId);
 
-    // Produkte laden (existierende; Aktiv-Check folgt separat)
     const productsRes = await client.query(
       `
       SELECT id, sku, name, price_cents, currency, is_active
@@ -64,7 +60,6 @@ export async function createOrderFromCart(userId, cartItems) {
 
     const productsById = new Map(productsRes.rows.map((p) => [Number(p.id), p]));
 
-    // Validierung: alle existieren, aktiv, currency konsistent
     let currency = null;
 
     const normalizedItems = normalizedCart.map((ci) => {
@@ -73,18 +68,18 @@ export async function createOrderFromCart(userId, cartItems) {
       if (!p) {
         throw new HttpError({
           status: 400,
-          code: 'BAD_REQUEST',
+          code: 'PRODUCT_NOT_FOUND',
           message: 'Ein Produkt im Warenkorb existiert nicht.',
-          details: { code: 'PRODUCT_NOT_FOUND', productId: ci.productId }
+          details: { productId: ci.productId }
         });
       }
 
       if (!p.is_active) {
         throw new HttpError({
           status: 400,
-          code: 'BAD_REQUEST',
+          code: 'PRODUCT_INACTIVE',
           message: 'Ein Produkt im Warenkorb ist nicht aktiv.',
-          details: { code: 'PRODUCT_INACTIVE', productId: ci.productId }
+          details: { productId: ci.productId }
         });
       }
 
@@ -94,9 +89,8 @@ export async function createOrderFromCart(userId, cartItems) {
       if (currency !== pCurrency) {
         throw new HttpError({
           status: 400,
-          code: 'BAD_REQUEST',
-          message: 'Währungen im Warenkorb dürfen nicht gemischt werden.',
-          details: { code: 'MIXED_CURRENCY' }
+          code: 'MIXED_CURRENCY',
+          message: 'Währungen im Warenkorb dürfen nicht gemischt werden.'
         });
       }
 
@@ -117,7 +111,6 @@ export async function createOrderFromCart(userId, cartItems) {
 
     const subtotalCents = normalizedItems.reduce((sum, i) => sum + i.lineTotalCents, 0);
 
-    // Order anlegen
     const orderRes = await client.query(
       `
       INSERT INTO orders (user_id, status, currency, subtotal_cents)
@@ -130,7 +123,6 @@ export async function createOrderFromCart(userId, cartItems) {
     const orderRow = orderRes.rows[0];
     const orderId = Number(orderRow.id);
 
-    // Items anlegen (Preis einfrieren)
     for (const item of normalizedItems) {
       await client.query(
         `
@@ -177,7 +169,6 @@ export async function createOrderFromCart(userId, cartItems) {
  * Listet Orders eines Users.
  *
  * @param {number} userId
- * @returns {Promise<Array<{id:number, status:string, currency:string, subtotalCents:number, createdAt:any}>>}
  */
 export async function listOrdersByUser(userId) {
   const res = await pool.query(
