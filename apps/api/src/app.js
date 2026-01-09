@@ -23,6 +23,8 @@ import { createSessionMiddleware } from './middleware/session.js';
 import { authRouter } from './routes/auth.js';
 import { requireRole } from './middleware/require-role.js';
 import { productsRouter } from './routes/products.js';
+import { cartRouter } from './routes/cart.js';
+import { ordersRouter } from './routes/orders.js';
 
 /**
  * Factory zur Erstellung einer Express-App.
@@ -61,6 +63,8 @@ export function createApp() {
   // Routen
   app.use('/auth', authRouter);
   app.use('/products', productsRouter);
+  app.use('/cart', cartRouter);
+  app.use('/orders', ordersRouter);
 
   /**
    * Test-only Route für RBAC.
