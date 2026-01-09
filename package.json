@@ -10,7 +10,8 @@
     "build": "pnpm -r build",
     "preview": "pnpm -r preview",
     "lint": "eslint .",
-    "format": "prettier -w ."
+    "format": "prettier -w .",
+    "check": "pnpm -C apps/api run test && pnpm -C apps/web run build && pnpm run lint"
   },
   "keywords": [],
   "author": "",
