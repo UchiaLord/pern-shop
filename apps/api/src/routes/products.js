@@ -1,9 +1,9 @@
 import express from 'express';
 import { z } from 'zod';
+
 import { requireRole } from '../middleware/require-role.js';
 import { validate } from '../middleware/validate.js';
 import { BadRequestError, NotFoundError } from '../errors/common.js';
-
 import { createProduct, listActiveProducts, updateProductById } from '../db/repositories/product-repository.js';
 
 export const productsRouter = express.Router();
