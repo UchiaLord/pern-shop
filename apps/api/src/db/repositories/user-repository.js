@@ -73,8 +73,8 @@ export async function findUserByEmail(email) {
       u.password_hash,
       r.key AS role
     FROM users u
-    LEFT JOIN user_roles ur ON ur.user_id = u.id
-    LEFT JOIN roles r ON r.id = ur.role_id
+    JOIN user_roles ur ON ur.user_id = u.id
+    JOIN roles r ON r.id = ur.role_id
     WHERE u.email = $1
     LIMIT 1
     `,
@@ -89,6 +89,6 @@ export async function findUserByEmail(email) {
     id: row.id,
     email: row.email,
     passwordHash: row.password_hash,
-    role: row.role ?? null,
+    role: row.role,
   };
 }
