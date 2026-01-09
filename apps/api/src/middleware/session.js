@@ -7,12 +7,11 @@
  *
  * Security Defaults:
  * - httpOnly Cookie (JS im Browser kann Cookie nicht lesen)
- * - sameSite=lax (Basis-CSRF-Schutz, ohne normale Navigation zu brechen)
+ * - sameSite=lax (Basis-CSRF-Schutz)
  * - secure Cookie in Produktion (nur via HTTPS)
  *
- * Betrieb:
- * - In Prod (hinter Proxy/Load Balancer) muss "trust proxy" gesetzt sein,
- *   sonst erkennt Express HTTPS nicht korrekt und secure cookies werden nicht gesetzt.
+ * Hinweis:
+ * - Wenn sameSite='none' genutzt wird (Cross-Site Cookies), MUSS secure=true sein.
  */
 
 import session from 'express-session';
@@ -22,18 +21,16 @@ import { pool } from '../db/pool.js';
 
 const PgSession = connectPgSimple(session);
 
-/**
- * Einheitlicher Cookie-Name für Sessions.
- *
- * Warum:
- * - Logout muss exakt den gleichen Cookie-Namen löschen, den express-session setzt.
- * - Wenn du den Cookie-Namen später änderst, musst du ihn nur an einer Stelle anpassen.
- */
 export const SESSION_COOKIE_NAME = 'pern.sid';
 
+function resolveSameSite() {
+  const raw = (process.env.SESSION_SAMESITE ?? '').toLowerCase();
+  if (raw === 'none') return 'none';
+  if (raw === 'strict') return 'strict';
+  return 'lax';
+}
+
 /**
- * Erzeugt die konfigurierte Session-Middleware.
- *
  * @param {Object} [opts]
  * @param {string} [opts.cookieName] - Cookie-Name (Default: SESSION_COOKIE_NAME)
  * @returns {import('express').RequestHandler}
@@ -45,34 +42,31 @@ export function createSessionMiddleware(opts = {}) {
     throw new Error('SESSION_SECRET fehlt. Lege ihn in apps/api/.env fest.');
   }
 
-  const isProd = process.env.NODE_ENV === 'production';
+  const nodeEnv = process.env.NODE_ENV ?? 'development';
+  const isProd = nodeEnv === 'production';
+
+  /** @type {'lax'|'strict'|'none'} */
+  const sameSite = resolveSameSite();
+
+  // Browser requirement: sameSite=none requires secure cookies
+  const secure = sameSite === 'none' ? true : isProd;
 
   return session({
     name: cookieName,
-
-    // Secret für das Signieren des Session-Cookies (nicht das Session-Objekt)
     secret: process.env.SESSION_SECRET,
-
-    // Session nicht neu speichern, wenn unverändert
     resave: false,
-
-    // Keine leeren Sessions erzeugen (weniger DB-Spam)
     saveUninitialized: false,
 
-    // Postgres-Store statt MemoryStore
     store: new PgSession({
       pool,
-      tableName: 'session',
-
-      // Optional: Auto-Cleanup abgelaufener Sessions
-      // pruneSessionInterval: 60, // Sekunden; optional aktivieren, wenn gewünscht
+      tableName: 'session'
     }),
 
     cookie: {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: isProd, // in Prod: nur HTTPS
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 Tage
-    },
+      sameSite,
+      secure,
+      maxAge: 1000 * 60 * 60 * 24 * 7
+    }
   });
 }

@@ -18,7 +18,7 @@ import { errorHandler } from './middleware/error-handler.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 import { validate } from './middleware/validate.js';
 import { applySecurityMiddleware } from './middleware/security.js';
-import { JSON_BODY_LIMIT } from './config/security.js';
+import { JSON_BODY_LIMIT, TRUST_PROXY } from './config/security.js';
 import { createSessionMiddleware } from './middleware/session.js';
 import { authRouter } from './routes/auth.js';
 import { requireRole } from './middleware/require-role.js';
@@ -46,8 +46,10 @@ export function createApp() {
   // JSON Parser mit Limit
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
-  // Wenn später hinter Proxy:
-  app.set('trust proxy', 1);
+  // Trust proxy nur, wenn es wirklich gebraucht wird (Prod oder explizit per ENV)
+  if (process.env.NODE_ENV === 'production' || TRUST_PROXY) {
+    app.set('trust proxy', 1);
+  }
 
   // Session Middleware (Postgres Store) MUSS vor /auth liegen
   app.use(createSessionMiddleware());
