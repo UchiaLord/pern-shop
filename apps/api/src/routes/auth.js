@@ -16,7 +16,8 @@ export const authRouter = express.Router();
  * Später kann man das konsolidieren.
  */
 function validateRegisterBody(body) {
-  const email = typeof body?.email === 'string' ? body.email.trim() : '';
+  const email =
+    typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body?.password === 'string' ? body.password : '';
 
   const details = {};
@@ -59,8 +60,6 @@ function validateLoginBody(body) {
   return { ok: true, email, password };
 }
 
-
-
 /**
  * POST /auth/register
  * Legt Nutzer an und loggt ihn direkt ein (Session wird gesetzt).
@@ -79,21 +78,28 @@ authRouter.post(
       });
     }
 
+    // Vorab prüfen, ob E-Mail bereits existiert (stabiler Contract: 409)
+    const existing = await findUserByEmail(validated.email);
+    if (existing) {
+      return res.status(409).json({
+        error: {
+          code: 'EMAIL_TAKEN',
+          message: 'E-Mail ist bereits registriert.',
+        },
+      });
+    }
+
     const passwordHash = await hashPassword(validated.password);
 
     try {
       const user = await createUser({ email: validated.email, passwordHash });
 
       // Session setzen (direkt eingeloggt)
-      req.session.user = {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      };
+      req.session.user = { id: user.id, email: user.email, role: user.role };
 
       return res.status(201).json({ user });
     } catch (err) {
-      // Postgres unique violation -> Email bereits vergeben
+      // Fallback: DB Unique Violation (Race Condition)
       if (err && typeof err === 'object' && err.code === '23505') {
         return res.status(409).json({
           error: {
