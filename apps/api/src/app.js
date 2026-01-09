@@ -25,6 +25,7 @@ import { requireRole } from './middleware/require-role.js';
 import { productsRouter } from './routes/products.js';
 import { cartRouter } from './routes/cart.js';
 import { ordersRouter } from './routes/orders.js';
+import { HttpError } from './errors/http-error.js';
 
 /**
  * Factory zur Erstellung einer Express-App.
@@ -70,6 +71,16 @@ export function createApp() {
    * Test-only Route für RBAC.
    * Wird ausschließlich im Test-Modus registriert.
    */
+
+  app.use((_req, _res, next) => {
+  next(
+    new HttpError({
+      status: 404,
+      code: 'NOT_FOUND',
+      message: 'Not found'
+    })
+  );
+});
 
   if (process.env.NODE_ENV === 'test') {
     app.get('/__test__/admin-only', requireRole('admin'), (_req, res) => {
