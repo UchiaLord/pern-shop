@@ -22,6 +22,17 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+type CreateProductInput = {
+  sku: string;
+  name: string;
+  description?: string | null;
+  priceCents: number;
+  currency?: string;
+  isActive?: boolean;
+};
+
+type PatchProductInput = Partial<Pick<Product, 'sku' | 'name' | 'description' | 'priceCents' | 'currency' | 'isActive'>>;
+
 export const api = {
   auth: {
     register: (email: string, password: string) =>
@@ -41,6 +52,20 @@ export const api = {
   products: {
     list: () => request<{ products: Product[] }>('/products'),
     get: (id: number) => request<{ product: Product }>(`/products/${id}`),
+
+    // admin-only
+    create: (input: CreateProductInput) =>
+      request<{ product: Product }>('/products', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+
+    // admin-only
+    patch: (id: number, patch: PatchProductInput) =>
+      request<{ product: Product }>(`/products/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
   },
 
   cart: {
