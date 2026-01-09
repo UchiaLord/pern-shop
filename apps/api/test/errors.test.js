@@ -27,7 +27,7 @@ describe('Fehlerbehandlung', () => {
     const res = await request(app).post('/echo').send({ message: '' });
 
     expect(res.status).toBe(400);
-    expect(res.body?.error?.code).toBe('BAD_REQUEST');
+    expect(res.body?.error?.code).toBe('VALIDATION_ERROR');
     expect(res.body?.error?.message).toBe('Validation failed');
     expect(res.headers['x-request-id']).toBeTruthy();
   });

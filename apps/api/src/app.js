@@ -25,7 +25,6 @@ import { requireRole } from './middleware/require-role.js';
 import { productsRouter } from './routes/products.js';
 import { cartRouter } from './routes/cart.js';
 import { ordersRouter } from './routes/orders.js';
-import { HttpError } from './errors/http-error.js';
 
 /**
  * Factory zur Erstellung einer Express-App.
@@ -71,17 +70,6 @@ export function createApp() {
    * Test-only Route für RBAC.
    * Wird ausschließlich im Test-Modus registriert.
    */
-
-  app.use((_req, _res, next) => {
-  next(
-    new HttpError({
-      status: 404,
-      code: 'NOT_FOUND',
-      message: 'Not found'
-    })
-  );
-});
-
   if (process.env.NODE_ENV === 'test') {
     app.get('/__test__/admin-only', requireRole('admin'), (_req, res) => {
       res.status(200).json({ ok: true });
@@ -92,7 +80,7 @@ export function createApp() {
 
       if (!req.session?.user) {
         return res.status(401).json({
-          error: { code: 'UNAUTHENTICATED', message: 'Nicht eingeloggt.' },
+          error: { code: 'UNAUTHENTICATED', message: 'Nicht eingeloggt.' }
         });
       }
 
@@ -109,15 +97,18 @@ export function createApp() {
     '/echo',
     validate({
       body: z.object({
-        message: z.string().min(1),
-      }),
+        message: z.string().min(1)
+      })
     }),
     (req, res) => {
       res.status(200).json({ message: req.body.message });
-    },
+    }
   );
 
+  // 404 Fallback (muss NACH allen Routen kommen)
   app.use((_req, _res, next) => next(new NotFoundError()));
+
+  // Globaler Error-Handler (muss ganz am Ende kommen)
   app.use(errorHandler);
 
   return app;
