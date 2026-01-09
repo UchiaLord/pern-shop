@@ -7,6 +7,7 @@
  * - Bei Fehler: BadRequestError("Validation failed") mit code=VALIDATION_ERROR + details
  */
 import { ZodError } from 'zod';
+
 import { BadRequestError } from '../errors/common.js';
 
 /**
