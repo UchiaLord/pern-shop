@@ -1,5 +1,3 @@
-import React from 'react';
-
 export function Loading({ label = 'Lade...' }: { label?: string }) {
   return <div>{label}</div>;
 }
