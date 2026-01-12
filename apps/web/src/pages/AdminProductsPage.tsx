@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../lib/api';
-import type { ApiError, Product } from '../lib/types';
+import { extractErrorMessage } from '../lib/errors';
+import type { Product } from '../lib/types';
+import { ErrorBanner, Loading, EmptyState } from '../components/Status';
 
 type FormState = {
   sku: string;
   name: string;
   description: string;
-  priceCents: string; // keep as string for input
+  priceCents: string;
   currency: string;
   isActive: boolean;
 };
@@ -18,32 +20,8 @@ const initialForm: FormState = {
   description: '',
   priceCents: '',
   currency: 'EUR',
-  isActive: true,
+  isActive: true
 };
-
-function isApiError(err: unknown): err is ApiError {
-  if (!err || typeof err !== 'object') return false;
-  if (!('error' in err)) return false;
-
-  const maybe = err as { error?: unknown };
-  if (!maybe.error || typeof maybe.error !== 'object') return false;
-
-  const inner = maybe.error as { code?: unknown; message?: unknown; details?: unknown };
-  return typeof inner.code === 'string' && typeof inner.message === 'string';
-}
-
-function formatError(err: unknown): string {
-  if (isApiError(err)) {
-    const code = err.error.code;
-    const msg = err.error.message;
-    const details =
-      err.error.details && typeof err.error.details === 'object' ? JSON.stringify(err.error.details) : '';
-    return details ? `${code}: ${msg} (${details})` : `${code}: ${msg}`;
-  }
-
-  if (err instanceof Error) return err.message;
-  return 'Unbekannter Fehler.';
-}
 
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -67,7 +45,7 @@ export default function AdminProductsPage() {
       const res = await api.products.list();
       setProducts(res.products);
     } catch (err) {
-      setPageError(formatError(err));
+      setPageError(extractErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -95,29 +73,27 @@ export default function AdminProductsPage() {
         description: form.description.trim() ? form.description.trim() : null,
         priceCents,
         currency: form.currency.trim().toUpperCase() || 'EUR',
-        isActive: form.isActive,
+        isActive: form.isActive
       };
 
       const res = await api.products.create(payload);
       setProducts((prev) => [res.product, ...prev]);
       setForm(initialForm);
     } catch (err) {
-      setSubmitError(formatError(err));
+      setSubmitError(extractErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function setActive(productId: number, isActive: boolean) {
-    // optimistic UI
     setProducts((prev) => prev.map((p) => (p.id === productId ? { ...p, isActive } : p)));
     try {
       const res = await api.products.patch(productId, { isActive });
       setProducts((prev) => prev.map((p) => (p.id === productId ? res.product : p)));
     } catch (err) {
-      // rollback by refetching (simple and safe)
       await loadProducts();
-      setPageError(formatError(err));
+      setPageError(extractErrorMessage(err));
     }
   }
 
@@ -128,7 +104,7 @@ export default function AdminProductsPage() {
       <section style={{ border: '1px solid #ddd', padding: 12, marginBottom: 16 }}>
         <h3>Create Product</h3>
 
-        {submitError ? <div style={{ color: 'crimson', marginBottom: 8 }}>{submitError}</div> : null}
+        {submitError ? <ErrorBanner message={submitError} /> : null}
 
         <form onSubmit={(e) => void onCreate(e)} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
           <label>
@@ -164,11 +140,7 @@ export default function AdminProductsPage() {
 
           <label>
             Currency
-            <input
-              value={form.currency}
-              onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
-              placeholder="EUR"
-            />
+            <input value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))} />
           </label>
 
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -189,10 +161,10 @@ export default function AdminProductsPage() {
       <section>
         <h3>Products</h3>
 
-        {isLoading ? <div>Lade...</div> : null}
-        {pageError ? <div style={{ color: 'crimson', marginBottom: 8 }}>{pageError}</div> : null}
+        {isLoading ? <Loading /> : null}
+        {pageError ? <ErrorBanner message={pageError} /> : null}
 
-        {!isLoading && !pageError && sortedProducts.length === 0 ? <div>Keine Produkte.</div> : null}
+        {!isLoading && !pageError && sortedProducts.length === 0 ? <EmptyState message="Keine Produkte." /> : null}
 
         <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: 10 }}>
           {sortedProducts.map((p) => (
