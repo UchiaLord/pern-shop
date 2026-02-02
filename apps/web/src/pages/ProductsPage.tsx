@@ -4,6 +4,7 @@ import { useAuth } from '../auth/useAuth';
 import { EmptyState, ErrorBanner, Loading } from '../components/Status';
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
+import { formatCents } from '../lib/money';
 import type { Product } from '../lib/types';
 
 export default function ProductsPage() {
@@ -74,7 +75,7 @@ export default function ProductsPage() {
       <ul>
         {sorted.map((p) => (
           <li key={p.id} style={{ marginTop: 8 }}>
-            <strong>{p.name}</strong> — {p.priceCents} {p.currency} — SKU: {p.sku}
+            <strong>{p.name}</strong> — {formatCents(p.priceCents, p.currency)} — SKU: {p.sku}
             {user ? (
               <button
                 type="button"

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Routes, Route, Link, Navigate } from 'react-router-dom';
 
 import { useAuth } from './auth/useAuth';
@@ -10,6 +9,7 @@ import RegisterPage from './pages/RegisterPage';
 import ProductsPage from './pages/ProductsPage';
 import CartPage from './pages/CartPage';
 import OrdersPage from './pages/OrdersPage';
+import OrderDetailsPage from './pages/OrderDetailsPage';
 import AdminProductsPage from './pages/AdminProductsPage';
 
 export default function App() {
@@ -52,6 +52,7 @@ export default function App() {
         <Route element={<RequireAuth />}>
           <Route path="/cart" element={<CartPage />} />
           <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/orders/:id" element={<OrderDetailsPage />} />
         </Route>
 
         {/* Admin-only */}

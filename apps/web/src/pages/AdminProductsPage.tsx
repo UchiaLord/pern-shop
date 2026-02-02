@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
+import { formatCents } from '../lib/money';
 import type { Product } from '../lib/types';
 import { EmptyState, ErrorBanner, Loading } from '../components/Status';
 
@@ -50,7 +51,6 @@ export default function AdminProductsPage() {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // row-level loading for activate/deactivate
   const [isToggling, setIsToggling] = useState<Record<number, boolean>>({});
 
   const sortedProducts = useMemo(() => {
@@ -118,8 +118,6 @@ export default function AdminProductsPage() {
       };
 
       const res = await api.products.create(payload);
-
-      // prepend new product; keep list stable
       setProducts((prev) => [res.product, ...prev]);
       setForm(initialForm);
     } catch (err: unknown) {
@@ -130,7 +128,6 @@ export default function AdminProductsPage() {
   }
 
   async function toggleActive(productId: number) {
-    // prevent parallel toggles for the same row
     if (isToggling[productId]) return;
 
     const current = products.find((p) => p.id === productId);
@@ -138,18 +135,14 @@ export default function AdminProductsPage() {
 
     const nextActive = !current.isActive;
 
-    // optimistic update
     setProducts((prev) => prev.map((p) => (p.id === productId ? { ...p, isActive: nextActive } : p)));
     setIsToggling((prev) => ({ ...prev, [productId]: true }));
     setPageError(null);
 
     try {
       const res = await api.products.patch(productId, { isActive: nextActive });
-
-      // commit server state (in case server normalizes anything)
       setProducts((prev) => prev.map((p) => (p.id === productId ? res.product : p)));
     } catch (err: unknown) {
-      // rollback (best-effort) + refresh list for consistency
       setProducts((prev) => prev.map((p) => (p.id === productId ? current : p)));
       setPageError(extractErrorMessage(err));
       await loadProducts();
@@ -174,20 +167,12 @@ export default function AdminProductsPage() {
         <form onSubmit={(e) => void onCreate(e)} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
           <label>
             SKU
-            <input
-              value={form.sku}
-              onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-              required
-            />
+            <input value={form.sku} onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))} required />
           </label>
 
           <label>
             Name
-            <input
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              required
-            />
+            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
           </label>
 
           <label>
@@ -250,9 +235,7 @@ export default function AdminProductsPage() {
                     <div style={{ fontWeight: 600 }}>
                       {p.sku} — {p.name}
                     </div>
-                    <div style={{ opacity: 0.8 }}>
-                      {p.priceCents} {p.currency}
-                    </div>
+                    <div style={{ opacity: 0.8 }}>{formatCents(p.priceCents, p.currency)}</div>
                     {p.description ? <div style={{ marginTop: 6 }}>{p.description}</div> : null}
                   </div>
 
