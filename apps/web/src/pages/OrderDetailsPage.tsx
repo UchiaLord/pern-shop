@@ -5,25 +5,11 @@ import { motion } from 'framer-motion';
 import { EmptyState, ErrorBanner, Loading } from '../components/Status';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
 import { formatCents } from '../lib/money';
 import type { OrderDetails } from '../lib/types';
-
-function StatusChip({ status }: { status: string }) {
-  const base = 'inline-flex items-center rounded-2xl border px-2 py-1 text-xs backdrop-blur-md border-white/10 bg-white/8';
-
-  const cls =
-    status === 'paid' || status === 'completed'
-      ? 'text-[rgb(var(--accent))]'
-      : status === 'pending'
-        ? 'text-[rgb(var(--fg))]/80'
-        : status === 'canceled' || status === 'failed'
-          ? 'text-[rgb(var(--danger))]'
-          : 'text-[rgb(var(--muted))]';
-
-  return <span className={`${base} ${cls}`}>{status}</span>;
-}
 
 export default function OrderDetailsPage() {
   const params = useParams();
@@ -70,16 +56,14 @@ export default function OrderDetailsPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="text-xs tracking-widest text-[rgb(var(--muted))]">
-            <Link className="hover:text-[rgb(var(--fg))]" to="/orders">
-              ORDERS
+          <div className="text-xs tracking-widest text-[rgb(var(--muted))]">ACCOUNT</div>
+          <h1 className="text-3xl font-semibold tracking-tight text-[rgb(var(--fg))]">Order Details</h1>
+          <p className="mt-1 text-sm text-[rgb(var(--muted))]">
+            <Link className="hover:underline" to="/orders">
+              Orders
             </Link>{' '}
-            / DETAILS
-          </div>
-          <h1 className="text-3xl font-semibold tracking-tight text-[rgb(var(--fg))]">
-            Order #{isValidId ? id : '—'}
-          </h1>
-          <p className="mt-1 text-sm text-[rgb(var(--muted))]">Line items are price-frozen at checkout.</p>
+            / #{isValidId ? id : '—'}
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -99,34 +83,44 @@ export default function OrderDetailsPage() {
           {/* Summary */}
           <div className="lg:col-span-1">
             <Card>
-              <CardHeader className="space-y-2">
+              <CardHeader className="space-y-1">
                 <CardTitle className="flex items-center justify-between gap-3">
                   <span>Summary</span>
-                  <StatusChip status={data.order.status} />
+                  <span className="rounded-2xl border border-white/10 bg-white/6 px-2 py-1 text-xs text-[rgb(var(--muted))]">
+                    #{data.order.id}
+                  </span>
                 </CardTitle>
-
-                <div className="text-sm text-[rgb(var(--muted))]">{data.order.createdAt}</div>
               </CardHeader>
-
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-[rgb(var(--muted))]">Subtotal</span>
                   <span className="text-[rgb(var(--fg))]/90">{subtotal}</span>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-white/6 p-3 text-xs text-[rgb(var(--muted))]">
-                  Next: Stripe PaymentIntent + webhook-confirmed status transitions (paid/failed/refunded).
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[rgb(var(--muted))]">Status</span>
+                  <span className="text-[rgb(var(--fg))]/90">{data.order.status}</span>
                 </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/6 p-3 text-xs text-[rgb(var(--muted))]">
+                  Created: {String(data.order.createdAt)}
+                </div>
+
+                <Link to="/orders">
+                  <Button variant="ghost" className="w-full">
+                    Back to Orders
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           </div>
 
           {/* Items */}
-          <div className="space-y-4 lg:col-span-2">
+          <div className="lg:col-span-2 space-y-4">
             <div className="flex items-end justify-between">
               <div>
                 <div className="text-xs tracking-widest text-[rgb(var(--muted))]">ITEMS</div>
-                <div className="text-sm text-[rgb(var(--muted))]">{data.items.length} items</div>
+                <div className="text-sm text-[rgb(var(--muted))]">{data.items.length} position(s)</div>
               </div>
             </div>
 
@@ -134,27 +128,21 @@ export default function OrderDetailsPage() {
 
             {data.items.length > 0 ? (
               <motion.div
-                className="grid gap-4"
+                className="grid gap-4 sm:grid-cols-2"
                 initial="hidden"
                 animate="show"
-                variants={{
-                  hidden: {},
-                  show: { transition: { staggerChildren: 0.04 } },
-                }}
+                variants={{ hidden: {}, show: { transition: { staggerChildren: 0.04 } } }}
               >
                 {data.items.map((it) => (
                   <motion.div
                     key={`${it.productId}-${it.sku}`}
-                    variants={{
-                      hidden: { opacity: 0, y: 10 },
-                      show: { opacity: 1, y: 0 },
-                    }}
+                    variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
                     transition={{ duration: 0.18 }}
                   >
                     <Card>
                       <CardHeader className="space-y-1">
                         <CardTitle className="flex items-start justify-between gap-3">
-                          <span className="leading-tight">{it.name}</span>
+                          <span className="min-w-0 truncate">{it.name}</span>
                           <span className="rounded-2xl border border-white/10 bg-white/6 px-2 py-1 text-xs text-[rgb(var(--muted))]">
                             {it.sku}
                           </span>
@@ -162,14 +150,12 @@ export default function OrderDetailsPage() {
 
                         <div className="text-sm text-[rgb(var(--muted))]">
                           {formatCents(it.unitPriceCents, it.currency)} × {it.quantity} ={' '}
-                          <span className="text-[rgb(var(--fg))]/90">
-                            {formatCents(it.lineTotalCents, it.currency)}
-                          </span>
+                          <span className="text-[rgb(var(--fg))]/90">{formatCents(it.lineTotalCents, it.currency)}</span>
                         </div>
                       </CardHeader>
 
                       <CardContent className="text-xs text-[rgb(var(--muted))]">
-                        Product ID: <span className="text-[rgb(var(--fg))]/70">{it.productId}</span>
+                        ProductId: {it.productId}
                       </CardContent>
                     </Card>
                   </motion.div>
