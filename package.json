@@ -6,13 +6,15 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "pnpm -r dev",
-    "build": "pnpm -r build",
-    "preview": "pnpm -r preview",
-    "lint": "eslint .",
-    "format": "prettier -w .",
-    "check": "pnpm -C apps/api run test && pnpm -C apps/web run build && pnpm run lint"
-  },
+  "dev": "pnpm -r dev",
+  "build": "pnpm -r build",
+  "preview": "pnpm -r preview",
+  "lint": "eslint .",
+  "format": "prettier -w .",
+
+  "ci": "pnpm run check",
+  "check": "pnpm -C apps/api run test && pnpm -C apps/web run build && pnpm run lint"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
