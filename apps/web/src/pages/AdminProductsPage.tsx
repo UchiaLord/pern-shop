@@ -1,10 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
 import { formatCents } from '../lib/money';
 import type { Product } from '../lib/types';
 import { EmptyState, ErrorBanner, Loading } from '../components/Status';
+
+import { Button } from '../components/ui/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { Input } from '../components/ui/Input';
 
 type FormState = {
   sku: string;
@@ -40,6 +45,20 @@ function parseNonNegativeInt(value: string): { ok: true; value: number } | { ok:
   }
 
   return { ok: true, value: n };
+}
+
+function StatusChip({ active }: { active: boolean }) {
+  return (
+    <span
+      className={[
+        'inline-flex items-center rounded-2xl border px-2 py-1 text-xs backdrop-blur-md',
+        'border-white/10 bg-white/8',
+        active ? 'text-[rgb(var(--accent))]' : 'text-[rgb(var(--danger))]',
+      ].join(' ')}
+    >
+      {active ? 'active' : 'inactive'}
+    </span>
+  );
 }
 
 export default function AdminProductsPage() {
@@ -156,107 +175,151 @@ export default function AdminProductsPage() {
   }
 
   return (
-    <div>
-      <h2>Admin: Products</h2>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-xs tracking-widest text-[rgb(var(--muted))]">ADMIN</div>
+          <h1 className="text-3xl font-semibold tracking-tight text-[rgb(var(--fg))]">Products</h1>
+          <p className="mt-1 text-sm text-[rgb(var(--muted))]">
+            Create new products and toggle active status.
+          </p>
+        </div>
 
-      <section style={{ border: '1px solid #ddd', padding: 12, marginBottom: 16 }}>
-        <h3>Create Product</h3>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={() => void loadProducts()} disabled={isLoading}>
+            {isLoading ? 'Loading…' : 'Reload'}
+          </Button>
+        </div>
+      </div>
 
-        {submitError ? <ErrorBanner message={submitError} /> : null}
+      {pageError ? <ErrorBanner message={pageError} /> : null}
 
-        <form onSubmit={(e) => void onCreate(e)} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
-          <label>
-            SKU
-            <input value={form.sku} onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))} required />
-          </label>
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Create */}
+        <div className="lg:col-span-1">
+          <Card>
+            <CardHeader>
+              <CardTitle>Create Product</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {submitError ? <ErrorBanner message={submitError} /> : null}
 
-          <label>
-            Name
-            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
-          </label>
+              <form onSubmit={(e) => void onCreate(e)} className="space-y-3">
+                <div className="space-y-1">
+                  <div className="text-xs text-[rgb(var(--muted))]">SKU</div>
+                  <Input value={form.sku} onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))} />
+                </div>
 
-          <label>
-            Description
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              rows={3}
-            />
-          </label>
+                <div className="space-y-1">
+                  <div className="text-xs text-[rgb(var(--muted))]">Name</div>
+                  <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+                </div>
 
-          <label>
-            Price (cents)
-            <input
-              value={form.priceCents}
-              onChange={(e) => setForm((f) => ({ ...f, priceCents: e.target.value }))}
-              inputMode="numeric"
-              pattern="^\d+$"
-              placeholder="e.g. 1999"
-              required
-            />
-          </label>
+                <div className="space-y-1">
+                  <div className="text-xs text-[rgb(var(--muted))]">Description</div>
+                  <textarea
+                    value={form.description}
+                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                    rows={3}
+                    className="w-full rounded-2xl border border-white/12 bg-white/6 px-3 py-2 text-sm text-[rgb(var(--fg))] placeholder:text-[rgb(var(--muted))] outline-none backdrop-blur-md focus:ring-2 focus:ring-[rgb(var(--ring))]/60"
+                    placeholder="Optional…"
+                  />
+                </div>
 
-          <label>
-            Currency
-            <input value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))} />
-          </label>
-
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              type="checkbox"
-              checked={form.isActive}
-              onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
-            />
-            Active
-          </label>
-
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Creating...' : 'Create'}
-          </button>
-        </form>
-      </section>
-
-      <section>
-        <h3>Products</h3>
-
-        {isLoading ? <Loading /> : null}
-        {pageError ? <ErrorBanner message={pageError} /> : null}
-
-        {!isLoading && !pageError && sortedProducts.length === 0 ? <EmptyState message="Keine Produkte." /> : null}
-
-        <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: 10 }}>
-          {sortedProducts.map((p) => {
-            const pending = Boolean(isToggling[p.id]);
-
-            return (
-              <li key={p.id} style={{ border: '1px solid #ddd', padding: 12, opacity: pending ? 0.75 : 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>
-                      {p.sku} — {p.name}
-                    </div>
-                    <div style={{ opacity: 0.8 }}>{formatCents(p.priceCents, p.currency)}</div>
-                    {p.description ? <div style={{ marginTop: 6 }}>{p.description}</div> : null}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <div className="text-xs text-[rgb(var(--muted))]">Price (cents)</div>
+                    <Input
+                      value={form.priceCents}
+                      onChange={(e) => setForm((f) => ({ ...f, priceCents: e.target.value }))}
+                      inputMode="numeric"
+                      pattern="^\\d+$"
+                      placeholder="e.g. 1999"
+                    />
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 160 }}>
-                    <div>
-                      Status:{' '}
-                      <strong style={{ color: p.isActive ? 'green' : 'crimson' }}>
-                        {p.isActive ? 'active' : 'inactive'}
-                      </strong>
-                    </div>
-
-                    <button type="button" disabled={pending} onClick={() => void toggleActive(p.id)}>
-                      {pending ? 'Saving...' : p.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
+                  <div className="space-y-1">
+                    <div className="text-xs text-[rgb(var(--muted))]">Currency</div>
+                    <Input value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))} />
                   </div>
                 </div>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+
+                <label className="flex items-center gap-2 text-sm text-[rgb(var(--fg))]/85">
+                  <input
+                    type="checkbox"
+                    checked={form.isActive}
+                    onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+                    className="h-4 w-4 accent-white/70"
+                  />
+                  Active
+                </label>
+
+                <Button type="submit" disabled={isSubmitting} className="w-full">
+                  {isSubmitting ? 'Creating…' : 'Create'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* List */}
+        <div className="lg:col-span-2">
+          {isLoading ? <Loading /> : null}
+
+          {!isLoading && !pageError && sortedProducts.length === 0 ? <EmptyState message="Keine Produkte." /> : null}
+
+          {!isLoading && sortedProducts.length > 0 ? (
+            <motion.div
+              className="grid gap-4 sm:grid-cols-2"
+              initial="hidden"
+              animate="show"
+              variants={{ hidden: {}, show: { transition: { staggerChildren: 0.04 } } }}
+            >
+              {sortedProducts.map((p) => {
+                const pending = Boolean(isToggling[p.id]);
+
+                return (
+                  <motion.div
+                    key={p.id}
+                    variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    <Card className={pending ? 'opacity-80' : ''}>
+                      <CardHeader className="space-y-1">
+                        <CardTitle className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate">
+                              <span className="text-[rgb(var(--muted))]">{p.sku}</span> — {p.name}
+                            </div>
+                            <div className="mt-1 text-sm text-[rgb(var(--muted))]">{formatCents(p.priceCents, p.currency)}</div>
+                          </div>
+
+                          <StatusChip active={p.isActive} />
+                        </CardTitle>
+                      </CardHeader>
+
+                      <CardContent className="space-y-3">
+                        {p.description ? (
+                          <div className="text-sm text-[rgb(var(--fg))]/80">{p.description}</div>
+                        ) : (
+                          <div className="text-sm text-[rgb(var(--muted))]">No description.</div>
+                        )}
+
+                        <div className="flex items-center justify-end">
+                          <Button variant={p.isActive ? 'danger' : 'primary'} disabled={pending} onClick={() => void toggleActive(p.id)}>
+                            {pending ? 'Saving…' : p.isActive ? 'Deactivate' : 'Activate'}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

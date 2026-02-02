@@ -90,13 +90,6 @@ describe('Cart & Orders', () => {
     await agent.post('/cart/items').send({ productId, quantity: 3 });
 
     const checkout = await agent.post('/orders');
-    if (checkout.status !== 201) {
-      console.log('checkout.status', checkout.status);
-
-      console.log('checkout.body', checkout.body);
-
-      console.log('checkout.text', checkout.text);
-    }
     expect(checkout.status).toBe(201);
     expect(checkout.body.order.subtotalCents).toBe(1500);
     expect(checkout.body.items.length).toBe(1);
