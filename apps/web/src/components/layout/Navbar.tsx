@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { useAuth } from '../../auth/useAuth';
 
 function NavLink({ to, label }: { to: string; label: string }) {
   const loc = useLocation();
@@ -20,6 +21,9 @@ function NavLink({ to, label }: { to: string; label: string }) {
 }
 
 export function Navbar() {
+  const { user, logout } = useAuth();
+  const isAdmin = user?.role === 'admin';
+
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[rgb(var(--bg))]/60 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
@@ -34,17 +38,35 @@ export function Navbar() {
 
         <nav className="hidden md:flex items-center gap-1">
           <NavLink to="/products" label="Products" />
-          <NavLink to="/orders" label="Orders" />
-          <NavLink to="/admin/products" label="Admin" />
+          {user && <NavLink to="/orders" label="Orders" />}
+          {isAdmin && <NavLink to="/admin/products" label="Admin" />}
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
           <Link to="/cart">
             <Button variant="ghost">Cart</Button>
           </Link>
-          <Link to="/login">
-            <Button>Login</Button>
-          </Link>
+
+          {!user ? (
+            <>
+              <Link to="/login">
+                <Button>Login</Button>
+              </Link>
+              <Link to="/register">
+                <Button variant="ghost">Register</Button>
+              </Link>
+            </>
+          ) : (
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                await logout();
+              }}
+              title={user.email}
+            >
+              Logout
+            </Button>
+          )}
         </div>
       </div>
 
