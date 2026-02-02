@@ -7,6 +7,10 @@ import { formatCents } from '../lib/money';
 import { useDebouncedCallback } from '../lib/useDebouncedCallback';
 import type { Cart } from '../lib/types';
 
+import { Button } from '../components/ui/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { Input } from '../components/ui/Input';
+
 const EMPTY_CART: Cart = { items: [], subtotalCents: 0, currency: 'EUR' };
 
 type QtyDraftMap = Record<number, string>; // productId -> string (for input)
@@ -236,72 +240,130 @@ export default function CartPage() {
 
   const formattedSubtotal = useMemo(() => formatCents(cart.subtotalCents, cart.currency), [cart.subtotalCents, cart.currency]);
 
-  return (
-    <div>
-      <h2>Cart</h2>
+   return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-xs tracking-widest text-[rgb(var(--muted))]">CHECKOUT</div>
+          <h1 className="text-3xl font-semibold tracking-tight text-[rgb(var(--fg))]">Cart</h1>
+          <p className="mt-1 text-sm text-[rgb(var(--muted))]">
+            Quantity updates are debounced; checkout flushes pending changes.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={() => void loadCart()} disabled={isLoading || isCheckingOut}>
+            {isLoading ? 'Loading…' : 'Reload'}
+          </Button>
+        </div>
+      </div>
 
       {error ? <ErrorBanner message={error} /> : null}
-
-      <button type="button" onClick={() => void loadCart()} disabled={isLoading || isCheckingOut}>
-        {isLoading ? 'Loading...' : 'Reload'}
-      </button>
 
       {isLoading ? <Loading /> : null}
 
       {!isLoading && !error && isEmpty ? <EmptyState message="Dein Warenkorb ist leer." /> : null}
 
-      <ul style={{ listStyle: 'none', padding: 0 }}>
-        {cart.items.map((i) => {
-          const rowPending = Boolean(pending[i.productId]) || isCheckingOut;
-          const draft = qtyDraft[i.productId] ?? String(i.quantity);
+      {!isLoading && !error && !isEmpty ? (
+        <div className="grid gap-4 lg:grid-cols-3">
+          {/* Items */}
+          <div className="space-y-4 lg:col-span-2">
+            {cart.items.map((i) => {
+              const rowPending = Boolean(pending[i.productId]) || isCheckingOut;
+              const draft = qtyDraft[i.productId] ?? String(i.quantity);
 
-          return (
-            <li key={i.productId} style={{ marginTop: 10, border: '1px solid #ddd', padding: 12, opacity: rowPending ? 0.75 : 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{i.name}</div>
-                  <div style={{ opacity: 0.85 }}>
-                    {formatCents(i.unitPriceCents, i.currency)} × {i.quantity} = {formatCents(i.lineTotalCents, i.currency)}
-                  </div>
+              return (
+                <Card key={i.productId} className={rowPending ? 'opacity-80' : ''}>
+                  <CardHeader className="space-y-1">
+                    <CardTitle className="flex items-start justify-between gap-3">
+                      <span className="leading-tight">{i.name}</span>
+                      <span className="rounded-2xl border border-white/10 bg-white/6 px-2 py-1 text-xs text-[rgb(var(--muted))]">
+                        #{i.productId}
+                      </span>
+                    </CardTitle>
+
+                    <div className="text-sm text-[rgb(var(--muted))]">
+                      {formatCents(i.unitPriceCents, i.currency)} × {i.quantity} ={' '}
+                      <span className="text-[rgb(var(--fg))]/90">{formatCents(i.lineTotalCents, i.currency)}</span>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        disabled={rowPending}
+                        onClick={() => onMinus(i.productId)}
+                        aria-label="Decrease quantity"
+                      >
+                        −
+                      </Button>
+
+                      <Input
+                        value={draft}
+                        onChange={(e) => onQtyInput(i.productId, e.target.value)}
+                        onBlur={() => void onQtyBlur(i.productId)}
+                        inputMode="numeric"
+                        pattern="^\\d+$"
+                        aria-label="Quantity"
+                        disabled={rowPending}
+                        className="w-20 text-center"
+                      />
+
+                      <Button
+                        variant="ghost"
+                        disabled={rowPending}
+                        onClick={() => onPlus(i.productId)}
+                        aria-label="Increase quantity"
+                      >
+                        +
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="danger"
+                        disabled={rowPending}
+                        onClick={() => void removeItem(i.productId)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Summary */}
+          <div className="lg:col-span-1">
+            <Card>
+              <CardHeader>
+                <CardTitle>Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[rgb(var(--muted))]">Subtotal</span>
+                  <span className="text-[rgb(var(--fg))]/90">{formattedSubtotal}</span>
                 </div>
 
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button type="button" disabled={rowPending} onClick={() => onMinus(i.productId)}>
-                    −
-                  </button>
-
-                  <input
-                    value={draft}
-                    onChange={(e) => onQtyInput(i.productId, e.target.value)}
-                    onBlur={() => void onQtyBlur(i.productId)}
-                    inputMode="numeric"
-                    pattern="^\d+$"
-                    style={{ width: 64, textAlign: 'center' }}
-                    aria-label="Quantity"
-                    disabled={rowPending}
-                  />
-
-                  <button type="button" disabled={rowPending} onClick={() => onPlus(i.productId)}>
-                    +
-                  </button>
-
-                  <button type="button" disabled={rowPending} onClick={() => void removeItem(i.productId)}>
-                    Remove
-                  </button>
+                <div className="rounded-2xl border border-white/10 bg-white/6 p-3 text-xs text-[rgb(var(--muted))]">
+                  Shipping & taxes are not implemented yet. Next step: Stripe PaymentIntent + webhook-confirmed orders.
                 </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
 
-      <div style={{ marginTop: 12 }}>
-        <strong>Subtotal:</strong> {formattedSubtotal}
-      </div>
-
-      <button type="button" disabled={isEmpty || isCheckingOut || isLoading} onClick={() => void checkout()}>
-        {isCheckingOut ? 'Checkout...' : 'Checkout'}
-      </button>
+                <Button
+                  className="w-full"
+                  disabled={isEmpty || isCheckingOut || isLoading}
+                  onClick={() => void checkout()}
+                >
+                  {isCheckingOut ? 'Checkout…' : 'Checkout'}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
