@@ -2,27 +2,15 @@ import React from 'react';
 import { Routes, Route, Link, Navigate } from 'react-router-dom';
 
 import { useAuth } from './auth/useAuth';
+import RequireAuth from './auth/RequireAuth';
+import RequireRole from './auth/RequireRole';
+
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProductsPage from './pages/ProductsPage';
 import CartPage from './pages/CartPage';
 import OrdersPage from './pages/OrdersPage';
 import AdminProductsPage from './pages/AdminProductsPage';
-
-function Protected({ children }: { children: React.ReactElement }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) return <div>Lade...</div>;
-  if (!user) return <Navigate to="/login" replace />;
-  return children;
-}
-
-function AdminOnly({ children }: { children: React.ReactElement }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) return <div>Lade...</div>;
-  if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== 'admin') return <Navigate to="/products" replace />;
-  return children;
-}
 
 export default function App() {
   const { user, logout } = useAuth();
@@ -55,37 +43,23 @@ export default function App() {
 
       <Routes>
         <Route path="/" element={<Navigate to="/products" replace />} />
+
         <Route path="/products" element={<ProductsPage />} />
-
-        <Route
-          path="/cart"
-          element={
-            <Protected>
-              <CartPage />
-            </Protected>
-          }
-        />
-
-        <Route
-          path="/orders"
-          element={
-            <Protected>
-              <OrdersPage />
-            </Protected>
-          }
-        />
-
-        <Route
-          path="/admin/products"
-          element={
-            <AdminOnly>
-              <AdminProductsPage />
-            </AdminOnly>
-          }
-        />
-
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+
+        {/* Auth-required */}
+        <Route element={<RequireAuth />}>
+          <Route path="/cart" element={<CartPage />} />
+          <Route path="/orders" element={<OrdersPage />} />
+        </Route>
+
+        {/* Admin-only */}
+        <Route element={<RequireRole role="admin" />}>
+          <Route path="/admin/products" element={<AdminProductsPage />} />
+        </Route>
+
+        <Route path="*" element={<div>404 Not Found</div>} />
       </Routes>
     </div>
   );
