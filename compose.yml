@@ -1,2 +1,2 @@
 ﻿include:
-  - infra/docker-compose.yaml
+  - infra/docker-compose.yml
