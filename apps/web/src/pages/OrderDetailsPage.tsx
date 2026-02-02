@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
-import { EmptyState, ErrorBanner, Loading } from '../components/Status';
+import { ErrorBanner, Loading } from '../components/Status';
+import EmptyState from '../components/ui/EmptyState';
+
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 
@@ -10,6 +12,26 @@ import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
 import { formatCents } from '../lib/money';
 import type { OrderDetails } from '../lib/types';
+
+import { ORDER_STATUS_CLASS, ORDER_STATUS_LABEL, type OrderStatus } from '../lib/orderStatus';
+
+function normalizeStatus(raw: string): OrderStatus {
+  // Backward compatibility for older server values.
+  // "completed" treated like "paid".
+  if (raw === 'completed') return 'paid';
+  if (raw === 'pending' || raw === 'paid' || raw === 'canceled' || raw === 'failed') return raw;
+  return 'pending';
+}
+
+function StatusChip({ status }: { status: string }) {
+  const s = normalizeStatus(status);
+  const base =
+    'inline-flex items-center rounded-2xl border border-white/10 bg-white/8 px-2 py-1 text-xs backdrop-blur-md';
+  const cls = ORDER_STATUS_CLASS[s];
+  const label = ORDER_STATUS_LABEL[s];
+
+  return <span className={`${base} ${cls}`}>{label}</span>;
+}
 
 export default function OrderDetailsPage() {
   const params = useParams();
@@ -25,6 +47,7 @@ export default function OrderDetailsPage() {
     if (!isValidId) {
       setError('Ungültige Order-ID.');
       setIsLoading(false);
+      setData(null);
       return;
     }
 
@@ -49,6 +72,20 @@ export default function OrderDetailsPage() {
   const subtotal = useMemo(() => {
     if (!data) return null;
     return formatCents(data.order.subtotalCents, data.order.currency);
+  }, [data]);
+
+  const createdAt = useMemo(() => {
+    if (!data) return null;
+    const raw = data.order.createdAt;
+    // Keep it safe: show raw if not parseable
+    const d = new Date(String(raw));
+    if (Number.isNaN(d.getTime())) return String(raw);
+    return d.toLocaleString();
+  }, [data]);
+
+  const status = useMemo(() => {
+    if (!data) return null;
+    return normalizeStatus(String(data.order.status));
   }, [data]);
 
   return (
@@ -76,7 +113,17 @@ export default function OrderDetailsPage() {
       {error ? <ErrorBanner message={error} /> : null}
       {isLoading ? <Loading /> : null}
 
-      {!isLoading && !error && !data ? <EmptyState message="Keine Daten." /> : null}
+      {!isLoading && !error && !data ? (
+        <EmptyState
+          title="Bestellung nicht gefunden"
+          description="Diese Bestellung existiert nicht oder du hast keinen Zugriff darauf."
+          action={
+            <Link to="/orders">
+              <Button>Zurück zu Orders</Button>
+            </Link>
+          }
+        />
+      ) : null}
 
       {data ? (
         <div className="grid gap-4 lg:grid-cols-3">
@@ -91,6 +138,7 @@ export default function OrderDetailsPage() {
                   </span>
                 </CardTitle>
               </CardHeader>
+
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-[rgb(var(--muted))]">Subtotal</span>
@@ -99,11 +147,11 @@ export default function OrderDetailsPage() {
 
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-[rgb(var(--muted))]">Status</span>
-                  <span className="text-[rgb(var(--fg))]/90">{data.order.status}</span>
+                  {status ? <StatusChip status={status} /> : <span className="text-[rgb(var(--fg))]/90">—</span>}
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-white/6 p-3 text-xs text-[rgb(var(--muted))]">
-                  Created: {String(data.order.createdAt)}
+                  Created: {createdAt}
                 </div>
 
                 <Link to="/orders">
@@ -116,7 +164,7 @@ export default function OrderDetailsPage() {
           </div>
 
           {/* Items */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className="space-y-4 lg:col-span-2">
             <div className="flex items-end justify-between">
               <div>
                 <div className="text-xs tracking-widest text-[rgb(var(--muted))]">ITEMS</div>
@@ -124,7 +172,17 @@ export default function OrderDetailsPage() {
               </div>
             </div>
 
-            {data.items.length === 0 ? <EmptyState message="Keine Items." /> : null}
+            {data.items.length === 0 ? (
+              <EmptyState
+                title="Keine Items"
+                description="Diese Bestellung enthält keine Positionen."
+                action={
+                  <Link to="/products">
+                    <Button>Produkte ansehen</Button>
+                  </Link>
+                }
+              />
+            ) : null}
 
             {data.items.length > 0 ? (
               <motion.div
@@ -150,13 +208,13 @@ export default function OrderDetailsPage() {
 
                         <div className="text-sm text-[rgb(var(--muted))]">
                           {formatCents(it.unitPriceCents, it.currency)} × {it.quantity} ={' '}
-                          <span className="text-[rgb(var(--fg))]/90">{formatCents(it.lineTotalCents, it.currency)}</span>
+                          <span className="text-[rgb(var(--fg))]/90">
+                            {formatCents(it.lineTotalCents, it.currency)}
+                          </span>
                         </div>
                       </CardHeader>
 
-                      <CardContent className="text-xs text-[rgb(var(--muted))]">
-                        ProductId: {it.productId}
-                      </CardContent>
+                      <CardContent className="text-xs text-[rgb(var(--muted))]">ProductId: {it.productId}</CardContent>
                     </Card>
                   </motion.div>
                 ))}

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
-import { EmptyState, ErrorBanner, Loading } from '../components/Status';
+import { ErrorBanner, Loading } from '../components/Status';
+import EmptyState from '../components/ui/EmptyState';
+
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { api } from '../lib/api';
@@ -10,20 +12,23 @@ import { extractErrorMessage } from '../lib/errors';
 import { formatCents } from '../lib/money';
 import type { OrderSummary } from '../lib/types';
 
+import { ORDER_STATUS_CLASS, ORDER_STATUS_LABEL, type OrderStatus } from '../lib/orderStatus';
+
+function normalizeStatus(raw: string): OrderStatus {
+  // Backward compatibility for older server values.
+  // "completed" treated like "paid".
+  if (raw === 'completed') return 'paid';
+  if (raw === 'pending' || raw === 'paid' || raw === 'canceled' || raw === 'failed') return raw;
+  return 'pending';
+}
+
 function StatusChip({ status }: { status: string }) {
-  const base =
-    'inline-flex items-center rounded-2xl border px-2 py-1 text-xs backdrop-blur-md';
+  const s = normalizeStatus(status);
+  const base = 'inline-flex items-center rounded-2xl border border-white/10 bg-white/8 px-2 py-1 text-xs backdrop-blur-md';
+  const cls = ORDER_STATUS_CLASS[s];
+  const label = ORDER_STATUS_LABEL[s];
 
-  const cls =
-    status === 'paid' || status === 'completed'
-      ? 'border-white/10 bg-white/8 text-[rgb(var(--accent))]'
-      : status === 'pending'
-        ? 'border-white/10 bg-white/8 text-[rgb(var(--fg))]/80'
-        : status === 'canceled' || status === 'failed'
-          ? 'border-white/10 bg-white/8 text-[rgb(var(--danger))]'
-          : 'border-white/10 bg-white/8 text-[rgb(var(--muted))]';
-
-  return <span className={`${base} ${cls}`}>{status}</span>;
+  return <span className={`${base} ${cls}`}>{label}</span>;
 }
 
 export default function OrdersPage() {
@@ -76,7 +81,17 @@ export default function OrdersPage() {
       {error ? <ErrorBanner message={error} /> : null}
       {isLoading ? <Loading /> : null}
 
-      {!isLoading && !error && sorted.length === 0 ? <EmptyState message="Keine Bestellungen." /> : null}
+      {!isLoading && !error && sorted.length === 0 ? (
+        <EmptyState
+          title="Keine Bestellungen"
+          description="Sobald du etwas kaufst, erscheinen deine Bestellungen hier."
+          action={
+            <Link to="/products">
+              <Button>Produkte entdecken</Button>
+            </Link>
+          }
+        />
+      ) : null}
 
       {!isLoading && !error && sorted.length > 0 ? (
         <motion.div

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 
-import { EmptyState, ErrorBanner, Loading } from '../components/Status';
+import { ErrorBanner, Loading } from '../components/Status';
+import EmptyState from '../components/ui/EmptyState';
+
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
 import { formatCents } from '../lib/money';
@@ -238,9 +241,12 @@ export default function CartPage() {
   const isEmpty = cart.items.length === 0;
   const isCheckingOut = Boolean((pending as unknown as Record<string, boolean>).__checkout__);
 
-  const formattedSubtotal = useMemo(() => formatCents(cart.subtotalCents, cart.currency), [cart.subtotalCents, cart.currency]);
+  const formattedSubtotal = useMemo(
+    () => formatCents(cart.subtotalCents, cart.currency),
+    [cart.subtotalCents, cart.currency],
+  );
 
-   return (
+  return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -260,10 +266,19 @@ export default function CartPage() {
       </div>
 
       {error ? <ErrorBanner message={error} /> : null}
-
       {isLoading ? <Loading /> : null}
 
-      {!isLoading && !error && isEmpty ? <EmptyState message="Dein Warenkorb ist leer." /> : null}
+      {!isLoading && !error && isEmpty ? (
+        <EmptyState
+          title="Dein Warenkorb ist leer"
+          description="Füge Produkte hinzu, um zur Kasse zu gehen."
+          action={
+            <Link to="/products">
+              <Button>Produkte entdecken</Button>
+            </Link>
+          }
+        />
+      ) : null}
 
       {!isLoading && !error && !isEmpty ? (
         <div className="grid gap-4 lg:grid-cols-3">
@@ -322,11 +337,7 @@ export default function CartPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="danger"
-                        disabled={rowPending}
-                        onClick={() => void removeItem(i.productId)}
-                      >
+                      <Button variant="danger" disabled={rowPending} onClick={() => void removeItem(i.productId)}>
                         Remove
                       </Button>
                     </div>
@@ -352,11 +363,7 @@ export default function CartPage() {
                   Shipping & taxes are not implemented yet. Next step: Stripe PaymentIntent + webhook-confirmed orders.
                 </div>
 
-                <Button
-                  className="w-full"
-                  disabled={isEmpty || isCheckingOut || isLoading}
-                  onClick={() => void checkout()}
-                >
+                <Button className="w-full" disabled={isEmpty || isCheckingOut || isLoading} onClick={() => void checkout()}>
                   {isCheckingOut ? 'Checkout…' : 'Checkout'}
                 </Button>
               </CardContent>

@@ -3,7 +3,9 @@ import { useSearchParams } from 'react-router-dom';
 
 import { motion } from 'framer-motion';
 import { useAuth } from '../auth/useAuth';
-import { EmptyState, ErrorBanner, Loading } from '../components/Status';
+import { ErrorBanner, Loading } from '../components/Status';
+import EmptyState from '../components/ui/EmptyState';
+
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { api } from '../lib/api';
@@ -17,7 +19,7 @@ function ProductSkeletonGrid() {
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
-          className="h-40 rounded-3xl border border-white/10 bg-white/6 backdrop-blur-md shadow-xl shadow-black/20 animate-pulse"
+          className="h-40 animate-pulse rounded-3xl border border-white/10 bg-white/6 backdrop-blur-md shadow-xl shadow-black/20"
         />
       ))}
     </div>
@@ -33,23 +35,33 @@ export default function ProductsPage() {
 
   const [isAdding, setIsAdding] = useState<Record<number, boolean>>({});
 
-const [searchParams] = useSearchParams();
-const q = (searchParams.get('q') ?? '').trim().toLowerCase();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const qRaw = (searchParams.get('q') ?? '').trim();
+  const q = qRaw.toLowerCase();
 
-const filteredSorted = useMemo(() => {
-  const copy = [...products];
+  const filteredSorted = useMemo(() => {
+    const copy = [...products];
 
-  const filtered =
-    q.length === 0
-      ? copy
-      : copy.filter((p) => {
-          const hay = `${p.sku} ${p.name}`.toLowerCase();
-          return hay.includes(q);
-        });
+    const filtered =
+      q.length === 0
+        ? copy
+        : copy.filter((p) => {
+            const hay = `${p.sku} ${p.name}`.toLowerCase();
+            return hay.includes(q);
+          });
 
-  filtered.sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
-  return filtered;
-}, [products, q]);
+    filtered.sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
+    return filtered;
+  }, [products, q]);
+
+  const hasSearch = qRaw.length > 0;
+  const isEmpty = !isLoading && !error && filteredSorted.length === 0;
+
+  function clearSearch() {
+    const params = new URLSearchParams(searchParams);
+    params.delete('q');
+    setSearchParams(params, { replace: true });
+  }
 
   async function loadProducts() {
     setIsLoading(true);
@@ -100,15 +112,23 @@ const filteredSorted = useMemo(() => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => void loadProducts()} disabled={isLoading}>
-            {isLoading ? 'Loading…' : 'Reload'}
-          </Button>
-          {!user ? (
-            <div className="text-sm text-[rgb(var(--muted))]">Login to purchase.</div>
-          ) : (
-            <div className="text-sm text-[rgb(var(--muted))]">Signed in as {user.email}</div>
-          )}
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => void loadProducts()} disabled={isLoading}>
+              {isLoading ? 'Loading…' : 'Reload'}
+            </Button>
+            {!user ? (
+              <div className="text-sm text-[rgb(var(--muted))]">Login to purchase.</div>
+            ) : (
+              <div className="text-sm text-[rgb(var(--muted))]">Signed in as {user.email}</div>
+            )}
+          </div>
+
+          {hasSearch ? (
+            <div className="text-xs text-[rgb(var(--muted))]">
+              Filter: <span className="text-[rgb(var(--fg))]/80">“{qRaw}”</span>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -122,8 +142,28 @@ const filteredSorted = useMemo(() => {
         </>
       ) : null}
 
-      {!isLoading && !error && filteredSorted.length === 0 ? (
-        <EmptyState message="Keine Produkte." />
+      {isEmpty ? (
+        hasSearch ? (
+          <EmptyState
+            title="Keine Treffer"
+            description="Für deine Suche wurden keine Produkte gefunden. Ändere den Suchbegriff oder entferne den Filter."
+            action={
+              <Button onClick={clearSearch} variant="ghost">
+                Suche zurücksetzen
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            title="Keine Produkte"
+            description="Aktuell sind keine Produkte verfügbar. Bitte später erneut versuchen."
+            action={
+              <Button onClick={() => void loadProducts()} variant="ghost">
+                Reload
+              </Button>
+            }
+          />
+        )
       ) : null}
 
       {!isLoading && !error && filteredSorted.length > 0 ? (

@@ -1,17 +1,20 @@
 import { Navigate, Outlet } from 'react-router-dom';
-
-import { ErrorBanner, Loading } from '../components/Status';
 import { useAuth } from './useAuth';
 
-export default function RequireRole({ role }: { role: string }) {
-  const { user, isLoading } = useAuth();
+type RequireRoleProps = {
+  role: string;
+};
 
-  if (isLoading) return <Loading />;
+export default function RequireRole({ role }: RequireRoleProps) {
+  const { user } = useAuth();
 
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    // Falls jemals direkt genutzt (ohne RequireAuth drüber): sicherheitshalber
+    return <Navigate to="/login" replace />;
+  }
 
   if (user.role !== role) {
-    return <ErrorBanner message="FORBIDDEN: Keine Berechtigung." />;
+    return <Navigate to="/forbidden" replace />;
   }
 
   return <Outlet />;
