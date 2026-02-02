@@ -1,3 +1,5 @@
+import type { ApiError, Cart, OrderDetails, OrderSummary, Product, User } from './types';
+
 async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
 
@@ -36,3 +38,68 @@ async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
 
   return data as T;
 }
+
+type CreateProductInput = {
+  sku: string;
+  name: string;
+  description?: string | null;
+  priceCents: number;
+  currency?: string;
+  isActive?: boolean;
+};
+
+type PatchProductInput = Partial<
+  Pick<Product, 'sku' | 'name' | 'description' | 'priceCents' | 'currency' | 'isActive'>
+>;
+
+export const api = {
+  auth: {
+    register: (email: string, password: string) =>
+      request<{ user: User }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      }),
+    login: (email: string, password: string) =>
+      request<{ user: User }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      }),
+    logout: () => request<void>('/auth/logout', { method: 'POST' }),
+    me: () => request<{ user: User }>('/auth/me'),
+  },
+
+  products: {
+    list: () => request<{ products: Product[] }>('/products'),
+    get: (id: number) => request<{ product: Product }>(`/products/${id}`),
+
+    // admin-only
+    create: (input: CreateProductInput) =>
+      request<{ product: Product }>('/products', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+
+    // admin-only
+    patch: (id: number, patch: PatchProductInput) =>
+      request<{ product: Product }>(`/products/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+  },
+
+  cart: {
+    get: () => request<{ cart: Cart }>('/cart'),
+    upsertItem: (productId: number, quantity: number) =>
+      request<{ ok: true }>('/cart/items', {
+        method: 'POST',
+        body: JSON.stringify({ productId, quantity }),
+      }),
+    removeItem: (productId: number) => request<void>(`/cart/items/${productId}`, { method: 'DELETE' }),
+  },
+
+  orders: {
+    checkout: () => request<OrderDetails>('/orders', { method: 'POST' }),
+    listMine: () => request<{ orders: OrderSummary[] }>('/orders/me'),
+    get: (id: number) => request<OrderDetails>(`/orders/${id}`),
+  },
+};
