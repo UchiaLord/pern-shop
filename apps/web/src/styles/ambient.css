@@ -1,0 +1,37 @@
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background: rgb(var(--bg));
+}
+
+.ambient::before,
+.ambient::after {
+  content: "";
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 999px;
+  filter: blur(70px);
+  opacity: 0.55;
+  animation: floaty 12s ease-in-out infinite;
+}
+
+.ambient::before {
+  left: -15vmax;
+  top: -15vmax;
+  background: radial-gradient(circle at 30% 30%, rgb(var(--accent)) 0%, transparent 55%);
+}
+
+.ambient::after {
+  right: -15vmax;
+  bottom: -15vmax;
+  background: radial-gradient(circle at 70% 70%, rgb(var(--accent2)) 0%, transparent 55%);
+  animation-delay: -4s;
+}
+
+@keyframes floaty {
+  0%, 100% { transform: translate3d(0,0,0) scale(1); }
+  50% { transform: translate3d(3vmax, -2vmax, 0) scale(1.05); }
+}
