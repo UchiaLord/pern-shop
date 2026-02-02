@@ -1,17 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const API = 'http://localhost:4000';
+
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Frontend: http://localhost:5173
-      // Backend:  http://localhost:4000
-      '/auth': 'http://localhost:4000',
-      '/products': 'http://localhost:4000',
-      '/cart': 'http://localhost:4000',
-      '/orders': 'http://localhost:4000',
-      '/__test__': 'http://localhost:4000'
+      '/auth': { target: API, changeOrigin: true },
+      '/products': { target: API, changeOrigin: true },
+      '/cart': { target: API, changeOrigin: true },
+      '/orders': { target: API, changeOrigin: true },
+      '/health': { target: API, changeOrigin: true },
+      '/__test__': { target: API, changeOrigin: true },
     },
   },
 });
