@@ -1,6 +1,5 @@
-import { Routes, Route, Link, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 
-import { useAuth } from './auth/useAuth';
 import RequireAuth from './auth/RequireAuth';
 import RequireRole from './auth/RequireRole';
 
@@ -12,35 +11,11 @@ import OrdersPage from './pages/OrdersPage';
 import OrderDetailsPage from './pages/OrderDetailsPage';
 import AdminProductsPage from './pages/AdminProductsPage';
 
+import { AppShell } from './components/layout/AppShell';
+
 export default function App() {
-  const { user, logout } = useAuth();
-
   return (
-    <div style={{ padding: 16 }}>
-      <nav style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-        <Link to="/products">Products</Link>
-        <Link to="/cart">Cart</Link>
-        <Link to="/orders">Orders</Link>
-
-        {user?.role === 'admin' ? <Link to="/admin/products">Admin</Link> : null}
-
-        {!user ? (
-          <>
-            <Link to="/login">Login</Link>
-            <Link to="/register">Register</Link>
-          </>
-        ) : (
-          <>
-            <span>
-              {user.email} ({user.role})
-            </span>
-            <button type="button" onClick={() => void logout()}>
-              Logout
-            </button>
-          </>
-        )}
-      </nav>
-
+    <AppShell>
       <Routes>
         <Route path="/" element={<Navigate to="/products" replace />} />
 
@@ -62,6 +37,6 @@ export default function App() {
 
         <Route path="*" element={<div>404 Not Found</div>} />
       </Routes>
-    </div>
+    </AppShell>
   );
 }
