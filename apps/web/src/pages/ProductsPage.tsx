@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
 
+import { motion } from 'framer-motion';
 import { useAuth } from '../auth/useAuth';
 import { EmptyState, ErrorBanner, Loading } from '../components/Status';
 import { Button } from '../components/ui/Button';
@@ -32,11 +33,23 @@ export default function ProductsPage() {
 
   const [isAdding, setIsAdding] = useState<Record<number, boolean>>({});
 
-  const sorted = useMemo(() => {
-    const copy = [...products];
-    copy.sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
-    return copy;
-  }, [products]);
+const [searchParams] = useSearchParams();
+const q = (searchParams.get('q') ?? '').trim().toLowerCase();
+
+const filteredSorted = useMemo(() => {
+  const copy = [...products];
+
+  const filtered =
+    q.length === 0
+      ? copy
+      : copy.filter((p) => {
+          const hay = `${p.sku} ${p.name}`.toLowerCase();
+          return hay.includes(q);
+        });
+
+  filtered.sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
+  return filtered;
+}, [products, q]);
 
   async function loadProducts() {
     setIsLoading(true);
@@ -109,11 +122,11 @@ export default function ProductsPage() {
         </>
       ) : null}
 
-      {!isLoading && !error && sorted.length === 0 ? (
+      {!isLoading && !error && filteredSorted.length === 0 ? (
         <EmptyState message="Keine Produkte." />
       ) : null}
 
-      {!isLoading && !error && sorted.length > 0 ? (
+      {!isLoading && !error && filteredSorted.length > 0 ? (
         <motion.div
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
           initial="hidden"
@@ -123,7 +136,7 @@ export default function ProductsPage() {
             show: { transition: { staggerChildren: 0.04 } },
           }}
         >
-          {sorted.map((p) => (
+          {filteredSorted.map((p) => (
             <motion.div
               key={p.id}
               variants={{
