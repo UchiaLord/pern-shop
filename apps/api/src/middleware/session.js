@@ -23,6 +23,9 @@ const PgSession = connectPgSimple(session);
 
 export const SESSION_COOKIE_NAME = 'pern.sid';
 
+const ONE_DAY_MS = 1000 * 60 * 60 * 24;
+const SESSION_MAX_AGE_MS = ONE_DAY_MS * 7;
+
 function resolveSameSite() {
   const raw = (process.env.SESSION_SAMESITE ?? '').toLowerCase();
   if (raw === 'none') return 'none';
@@ -39,7 +42,7 @@ export function createSessionMiddleware(opts = {}) {
   const cookieName = opts.cookieName ?? SESSION_COOKIE_NAME;
 
   if (!process.env.SESSION_SECRET) {
-    throw new Error('SESSION_SECRET fehlt. Lege ihn in apps/api/.env fest.');
+    throw new Error('SESSION_SECRET fehlt. Lege ihn als ENV-Variable fest.');
   }
 
   const nodeEnv = process.env.NODE_ENV ?? 'development';
@@ -63,10 +66,12 @@ export function createSessionMiddleware(opts = {}) {
     }),
 
     cookie: {
+      // Wichtig für res.clearCookie(): path muss matchen
+      path: '/',
       httpOnly: true,
       sameSite,
       secure,
-      maxAge: 1000 * 60 * 60 * 24 * 7
+      maxAge: SESSION_MAX_AGE_MS
     }
   });
 }
