@@ -18,8 +18,7 @@ export function Button({
       'text-[rgb(var(--fg))] ' +
       'bg-white/10 border border-white/15 backdrop-blur-md shadow-lg shadow-black/20 ' +
       'hover:bg-white/14',
-    ghost:
-      'text-[rgb(var(--fg))] bg-transparent border border-white/10 hover:bg-white/8',
+    ghost: 'text-[rgb(var(--fg))] bg-transparent border border-white/10 hover:bg-white/8',
     danger:
       'text-[rgb(var(--fg))] bg-[rgb(var(--danger))]/20 border border-[rgb(var(--danger))]/35 ' +
       'hover:bg-[rgb(var(--danger))]/26',
