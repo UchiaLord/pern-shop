@@ -1,5 +1,5 @@
 import type { OrderStatus } from '../lib/orderStatus';
-import { ORDER_STATUS_CLASS, ORDER_STATUS_LABEL } from '../lib/orderStatus';
+import { ORDER_STATUS_LABEL, ORDER_STATUS_CLASS } from '../lib/orderStatus';
 
 export function Loading({ label = 'Lade...' }: { label?: string }) {
   return <div>{label}</div>;
@@ -27,17 +27,20 @@ function isOrderStatus(x: string): x is OrderStatus {
  * Uses Tailwind classes from lib/orderStatus.
  */
 export function OrderStatusBadge({ status }: { status: OrderStatus | string }) {
-  const normalized = typeof status === 'string' ? status : String(status);
+  const isKnown =
+    status === 'pending' ||
+    status === 'paid' ||
+    status === 'shipped' ||
+    status === 'completed' ||
+    status === 'cancelled';
 
-  const label = isOrderStatus(normalized) ? ORDER_STATUS_LABEL[normalized] : fallbackLabel(normalized);
-  const cls = isOrderStatus(normalized)
-    ? ORDER_STATUS_CLASS[normalized]
-    : 'bg-gray-200 text-gray-700';
+  const label = isKnown ? ORDER_STATUS_LABEL[status] : String(status);
+  const cls = isKnown ? ORDER_STATUS_CLASS[status] : 'bg-gray-200 text-gray-700';
 
   return (
     <span
-      className={`inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs ${cls}`}
-      title={normalized}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}
+      title={String(status)}
     >
       {label}
     </span>
