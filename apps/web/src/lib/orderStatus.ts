@@ -31,3 +31,47 @@ export function allowedNextStatuses(current: OrderStatus): OrderStatus[] {
 export function isTerminalStatus(status: OrderStatus): boolean {
   return status === 'completed' || status === 'cancelled';
 }
+
+export function isDangerStatus(next: OrderStatus): boolean {
+  return next === 'cancelled';
+}
+
+export type OrderStatusAction = {
+  nextStatus: OrderStatus;
+  label: string;
+  variant: 'primary' | 'secondary' | 'danger';
+  confirm?: {
+    title: string;
+    message: string;
+  };
+};
+
+export function getOrderStatusActions(current: OrderStatus): OrderStatusAction[] {
+  const next = allowedNextStatuses(current);
+
+  return next.map((s) => {
+    if (s === 'paid') {
+      return { nextStatus: 'paid', label: 'Als bezahlt markieren', variant: 'primary' };
+    }
+    if (s === 'shipped') {
+      return { nextStatus: 'shipped', label: 'Als versandt markieren', variant: 'primary' };
+    }
+    if (s === 'completed') {
+      return { nextStatus: 'completed', label: 'Als abgeschlossen markieren', variant: 'primary' };
+    }
+    if (s === 'cancelled') {
+      return {
+        nextStatus: 'cancelled',
+        label: 'Stornieren',
+        variant: 'danger',
+        confirm: {
+          title: 'Order stornieren?',
+          message: 'Order wirklich stornieren? Dieser Vorgang ist endgültig.',
+        },
+      };
+    }
+
+    // Fallback (sollte nie passieren, aber defensiv)
+    return { nextStatus: s, label: `Status setzen: ${s}`, variant: 'secondary' };
+  });
+}
