@@ -26,7 +26,6 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) return <Loading label="Lade Admin Orders..." />;
