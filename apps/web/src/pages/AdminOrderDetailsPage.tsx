@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
 import type { OrderDetails } from '../lib/types';
 import { EmptyState, ErrorBanner, Loading, OrderStatusBadge } from '../components/Status';
-import { ORDER_STATUS_LABEL, allowedNextStatuses, type OrderStatus } from '../lib/orderStatus';
+import { getOrderStatusActions, type OrderStatus } from '../lib/orderStatus';
 
 type OrderDetailsWithTimestamps = OrderDetails & {
   order: OrderDetails['order'] & {
@@ -34,8 +34,6 @@ export default function AdminOrderDetailsPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
-
   async function reload() {
     setError(null);
     setLoading(true);
@@ -60,7 +58,8 @@ export default function AdminOrderDetailsPage() {
   }, [orderId]);
 
   const currentStatus = (data?.order.status ?? 'pending') as OrderStatus;
-  const nextOptions = useMemo(() => allowedNextStatuses(currentStatus), [currentStatus]);
+
+  const actions = useMemo(() => getOrderStatusActions(currentStatus), [currentStatus]);
 
   async function applyStatus(next: OrderStatus) {
     if (!data) return;
@@ -76,6 +75,17 @@ export default function AdminOrderDetailsPage() {
     }
   }
 
+  function onAction(next: OrderStatus) {
+    const action = actions.find((a) => a.nextStatus === next);
+
+    if (action?.confirm) {
+      const ok = window.confirm(action.confirm.message);
+      if (!ok) return;
+    }
+
+    void applyStatus(next);
+  }
+
   if (!Number.isFinite(orderId) || orderId <= 0) {
     return <EmptyState message="Ungültige Order-ID." />;
   }
@@ -85,11 +95,6 @@ export default function AdminOrderDetailsPage() {
   if (!data) return <EmptyState message="Order nicht gefunden." />;
 
   const { order, items } = data;
-
-  const canPaid = nextOptions.includes('paid');
-  const canShipped = nextOptions.includes('shipped');
-  const canCompleted = nextOptions.includes('completed');
-  const canCancelled = nextOptions.includes('cancelled');
 
   return (
     <div>
@@ -121,73 +126,43 @@ export default function AdminOrderDetailsPage() {
 
         <div className="mt-3 grid gap-1 text-sm">
           <div className="opacity-80">
-            <span className="font-medium">Updated:</span> {fmtMaybeIso((order as any).updatedAt)}
+            <span className="font-medium">Updated:</span> {fmtMaybeIso(order.updatedAt)}
           </div>
           <div className="opacity-80">
-            <span className="font-medium">Paid:</span> {fmtMaybeIso((order as any).paidAt)}
+            <span className="font-medium">Paid:</span> {fmtMaybeIso(order.paidAt)}
           </div>
           <div className="opacity-80">
-            <span className="font-medium">Shipped:</span> {fmtMaybeIso((order as any).shippedAt)}
+            <span className="font-medium">Shipped:</span> {fmtMaybeIso(order.shippedAt)}
           </div>
           <div className="opacity-80">
-            <span className="font-medium">Completed:</span> {fmtMaybeIso((order as any).completedAt)}
+            <span className="font-medium">Completed:</span> {fmtMaybeIso(order.completedAt)}
           </div>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <div className="text-sm font-medium">Aktionen:</div>
 
-          {nextOptions.length === 0 ? (
+          {actions.length === 0 ? (
             <div className="text-sm opacity-70">Keine weiteren Transitions möglich.</div>
           ) : (
             <>
-              {canPaid ? (
-                <button
-                  type="button"
-                  onClick={() => void applyStatus('paid')}
-                  className="rounded-md border px-3 py-1 text-sm"
-                  disabled={busy}
-                  title={ORDER_STATUS_LABEL.paid}
-                >
-                  Mark as paid
-                </button>
-              ) : null}
+              {actions.map((a) => {
+                const base = 'rounded-md border px-3 py-1 text-sm';
+                const danger = a.variant === 'danger' ? ' border-red-500/60 text-red-300' : '';
+                const cls = base + danger;
 
-              {canShipped ? (
-                <button
-                  type="button"
-                  onClick={() => void applyStatus('shipped')}
-                  className="rounded-md border px-3 py-1 text-sm"
-                  disabled={busy}
-                  title={ORDER_STATUS_LABEL.shipped}
-                >
-                  Mark as shipped
-                </button>
-              ) : null}
-
-              {canCompleted ? (
-                <button
-                  type="button"
-                  onClick={() => void applyStatus('completed')}
-                  className="rounded-md border px-3 py-1 text-sm"
-                  disabled={busy}
-                  title={ORDER_STATUS_LABEL.completed}
-                >
-                  Mark as completed
-                </button>
-              ) : null}
-
-              {canCancelled ? (
-                <button
-                  type="button"
-                  onClick={() => setConfirmCancelOpen(true)}
-                  className="rounded-md border px-3 py-1 text-sm"
-                  disabled={busy}
-                  title={ORDER_STATUS_LABEL.cancelled}
-                >
-                  Cancel order
-                </button>
-              ) : null}
+                return (
+                  <button
+                    key={a.nextStatus}
+                    type="button"
+                    onClick={() => onAction(a.nextStatus)}
+                    className={cls}
+                    disabled={busy}
+                  >
+                    {a.label}
+                  </button>
+                );
+              })}
 
               {busy ? <div className="text-sm opacity-70">Updating…</div> : null}
               {actionError ? <div className="text-sm text-red-400">{actionError}</div> : null}
@@ -195,44 +170,6 @@ export default function AdminOrderDetailsPage() {
           )}
         </div>
       </div>
-
-      {confirmCancelOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setConfirmCancelOpen(false)}
-            aria-hidden="true"
-          />
-          <div className="relative w-full max-w-md rounded-lg border bg-neutral-950 p-4 shadow-lg">
-            <div className="text-base font-semibold">Order wirklich stornieren?</div>
-            <div className="mt-2 text-sm opacity-80">
-              Das setzt den Status auf <code>cancelled</code>. Danach sind keine weiteren Transitions mehr möglich.
-            </div>
-
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-md border px-3 py-1 text-sm"
-                onClick={() => setConfirmCancelOpen(false)}
-                disabled={busy}
-              >
-                Abbrechen
-              </button>
-              <button
-                type="button"
-                className="rounded-md border px-3 py-1 text-sm"
-                onClick={() => {
-                  setConfirmCancelOpen(false);
-                  void applyStatus('cancelled');
-                }}
-                disabled={busy}
-              >
-                Ja, stornieren
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       <h3 className="mt-6 mb-2 text-lg font-semibold">Items</h3>
       <div className="grid gap-2">
@@ -253,10 +190,6 @@ export default function AdminOrderDetailsPage() {
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="mt-6 text-sm opacity-60">
-        Allowed transitions from <code>{currentStatus}</code>: {nextOptions.join(', ') || 'none'}
       </div>
     </div>
   );
