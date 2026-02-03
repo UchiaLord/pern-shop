@@ -1,25 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
 import type { OrderSummary } from '../lib/types';
 import { EmptyState, ErrorBanner, Loading, OrderStatusBadge } from '../components/Status';
-import type { OrderStatus } from '../lib/orderStatus';
-
-function coerceOrderStatus(raw: unknown): OrderStatus {
-  if (raw === 'pending' || raw === 'paid' || raw === 'shipped' || raw === 'completed' || raw === 'cancelled') {
-    return raw;
-  }
-  return 'pending';
-}
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function reload() {
+  const reload = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
@@ -30,12 +22,11 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reload]);
 
   if (loading) return <Loading label="Lade Orders..." />;
   if (error) return <ErrorBanner message={error} />;
@@ -45,11 +36,7 @@ export default function OrdersPage() {
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">Orders</h2>
-        <button
-          type="button"
-          onClick={() => void reload()}
-          className="rounded-md border px-3 py-1 text-sm"
-        >
+        <button type="button" onClick={() => void reload()} className="rounded-md border px-3 py-1 text-sm">
           Reload
         </button>
       </div>
@@ -60,7 +47,7 @@ export default function OrdersPage() {
             <div className="min-w-0">
               <div className="flex items-center gap-3">
                 <strong className="truncate">Order #{o.id}</strong>
-                <OrderStatusBadge status={coerceOrderStatus((o as any).status)} />
+                <OrderStatusBadge status={o.status} />
               </div>
               <div className="mt-1 text-sm opacity-80">
                 {o.currency} · Subtotal: {o.subtotalCents} cents

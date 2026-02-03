@@ -1,18 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
 import type { OrderDetails } from '../lib/types';
 import { EmptyState, ErrorBanner, Loading, OrderStatusBadge } from '../components/Status';
-import type { OrderStatus } from '../lib/orderStatus';
-
-function coerceOrderStatus(raw: unknown): OrderStatus {
-  if (raw === 'pending' || raw === 'paid' || raw === 'shipped' || raw === 'completed' || raw === 'cancelled') {
-    return raw;
-  }
-  return 'pending';
-}
 
 export default function OrderDetailsPage() {
   const { id } = useParams();
@@ -22,7 +14,7 @@ export default function OrderDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function reload() {
+  const reload = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
@@ -33,7 +25,7 @@ export default function OrderDetailsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [orderId]);
 
   useEffect(() => {
     if (!Number.isFinite(orderId) || orderId <= 0) {
@@ -42,8 +34,7 @@ export default function OrderDetailsPage() {
       return;
     }
     void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId]);
+  }, [orderId, reload]);
 
   if (!Number.isFinite(orderId) || orderId <= 0) {
     return <EmptyState message="Ungültige Order-ID." />;
@@ -60,15 +51,11 @@ export default function OrderDetailsPage() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h2 className="text-xl font-semibold">Order #{order.id}</h2>
-          <OrderStatusBadge status={coerceOrderStatus((order as any).status)} />
+          <OrderStatusBadge status={order.status} />
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void reload()}
-            className="rounded-md border px-3 py-1 text-sm"
-          >
+          <button type="button" onClick={() => void reload()} className="rounded-md border px-3 py-1 text-sm">
             Reload
           </button>
           <Link className="text-sm underline" to="/orders">
