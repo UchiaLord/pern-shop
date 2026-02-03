@@ -8,7 +8,10 @@ const app = createApp();
 
 describe('Products', () => {
   beforeEach(async () => {
-    // Stabiler Cleanup für alle Tests
+    // FK-sicherer Cleanup:
+    // order_items -> orders -> products -> users
+    await pool.query('DELETE FROM order_items');
+    await pool.query('DELETE FROM orders');
     await pool.query(`DELETE FROM products WHERE sku LIKE 'test-%'`);
     await pool.query(`DELETE FROM users WHERE email LIKE 'test+%@example.com'`);
   });
@@ -68,7 +71,7 @@ describe('Products', () => {
       VALUES
         ('test-a', 'Test A', NULL, 1234, 'EUR', true),
         ('test-b', 'Test B', NULL, 5678, 'EUR', false)
-      `,
+      `
     );
 
     const res = await request(app).get('/products');

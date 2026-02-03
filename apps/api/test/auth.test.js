@@ -8,8 +8,12 @@ const app = createApp();
 
 describe('Auth (Session-basiert)', () => {
   beforeEach(async () => {
-    // Testdaten bereinigen (robust und schnell)
-    // Erwartung: Tabelle "users" existiert.
+    // FK-sichere Cleanup-Reihenfolge:
+    // order_items -> orders -> products -> users
+    // (auth tests erstellen evtl. indirekt users, andere Tests erstellen orders)
+    await pool.query('DELETE FROM order_items');
+    await pool.query('DELETE FROM orders');
+    await pool.query(`DELETE FROM products WHERE sku LIKE 'test-%'`);
     await pool.query(`DELETE FROM users WHERE email LIKE 'test+%@example.com'`);
   });
 
@@ -116,12 +120,7 @@ describe('Auth (Session-basiert)', () => {
     expect(asUser.status).toBe(403);
 
     // Rolle im Test direkt in der Session setzen:
-    // Wir machen dafür einen kleinen Test-only Endpoint, damit wir nicht "intern" rumhacken.
-
-    // Rolle auf admin setzen -> 200
-    const setRole = await agent
-      .post('/__test__/set-role')
-      .send({ role: 'admin' });
+    const setRole = await agent.post('/__test__/set-role').send({ role: 'admin' });
     expect(setRole.status).toBe(200);
 
     const asAdmin = await agent.get('/__test__/admin-only');

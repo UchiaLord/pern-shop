@@ -246,3 +246,77 @@ export async function getOrderDetails(userId, orderId) {
     }))
   };
 }
+
+/**
+ * Admin: listet alle Orders (read-only).
+ * Response-Shape ist kompatibel zum /orders/me Listing, erweitert um userId.
+ */
+export async function listAllOrders() {
+  const res = await pool.query(
+    `
+    SELECT id, user_id, status, currency, subtotal_cents, created_at
+    FROM orders
+    ORDER BY id DESC
+    `
+  );
+
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    userId: Number(r.user_id),
+    status: r.status,
+    currency: r.currency,
+    subtotalCents: Number(r.subtotal_cents),
+    createdAt: r.created_at
+  }));
+}
+
+/**
+ * Admin: lädt Order-Details (inkl. Items) ohne User-Scope.
+ *
+ * @param {number} orderId
+ */
+export async function getOrderDetailsAdmin(orderId) {
+  const orderRes = await pool.query(
+    `
+    SELECT id, user_id, status, currency, subtotal_cents, created_at
+    FROM orders
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [orderId]
+  );
+
+  if (orderRes.rowCount === 0) return null;
+
+  const o = orderRes.rows[0];
+
+  const itemsRes = await pool.query(
+    `
+    SELECT product_id, sku, name, unit_price_cents, currency, quantity, line_total_cents
+    FROM order_items
+    WHERE order_id = $1
+    ORDER BY product_id ASC
+    `,
+    [orderId]
+  );
+
+  return {
+    order: {
+      id: Number(o.id),
+      userId: Number(o.user_id),
+      status: o.status,
+      currency: o.currency,
+      subtotalCents: Number(o.subtotal_cents),
+      createdAt: o.created_at
+    },
+    items: itemsRes.rows.map((r) => ({
+      productId: Number(r.product_id),
+      sku: r.sku,
+      name: r.name,
+      unitPriceCents: Number(r.unit_price_cents),
+      currency: r.currency,
+      quantity: Number(r.quantity),
+      lineTotalCents: Number(r.line_total_cents)
+    }))
+  };
+}

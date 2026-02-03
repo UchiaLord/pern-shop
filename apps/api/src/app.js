@@ -25,6 +25,7 @@ import { requireRole } from './middleware/require-role.js';
 import { productsRouter } from './routes/products.js';
 import { cartRouter } from './routes/cart.js';
 import { ordersRouter } from './routes/orders.js';
+import { adminOrdersRouter } from './routes/admin-orders.js';
 
 /**
  * Factory zur Erstellung einer Express-App.
@@ -67,6 +68,9 @@ export function createApp() {
   app.use('/products', productsRouter);
   app.use('/cart', cartRouter);
   app.use('/orders', ordersRouter);
+
+  // Admin (read-only)
+  app.use('/admin/orders', adminOrdersRouter);
 
   /**
    * Test-only Route für RBAC.
