@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import { createApp } from '../src/app.js';
 import { pool } from '../src/db/pool.js';
@@ -7,15 +7,6 @@ import { pool } from '../src/db/pool.js';
 const app = createApp();
 
 describe('Products', () => {
-  beforeEach(async () => {
-    // FK-sicherer Cleanup:
-    // order_items -> orders -> products -> users
-    await pool.query('DELETE FROM order_items');
-    await pool.query('DELETE FROM orders');
-    await pool.query(`DELETE FROM products WHERE sku LIKE 'test-%'`);
-    await pool.query(`DELETE FROM users WHERE email LIKE 'test+%@example.com'`);
-  });
-
   it('GET /products -> 200 und leere Liste', async () => {
     const res = await request(app).get('/products');
     expect(res.status).toBe(200);
@@ -65,14 +56,12 @@ describe('Products', () => {
 
   it('GET /products zeigt nur aktive Produkte', async () => {
     // Setup gezielt hier (damit der Test unabhängig bleibt)
-    await pool.query(
-      `
+    await pool.query(`
       INSERT INTO products (sku, name, description, price_cents, currency, is_active)
       VALUES
         ('test-a', 'Test A', NULL, 1234, 'EUR', true),
         ('test-b', 'Test B', NULL, 5678, 'EUR', false)
-      `
-    );
+    `);
 
     const res = await request(app).get('/products');
     expect(res.status).toBe(200);

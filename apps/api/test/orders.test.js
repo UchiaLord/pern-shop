@@ -1,20 +1,11 @@
 import request from 'supertest';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import { createApp } from '../src/app.js';
-import { pool } from '../src/db/pool.js';
 
 const app = createApp();
 
 describe('Cart & Orders', () => {
-  beforeEach(async () => {
-    // Reihenfolge wegen FKs
-    await pool.query('DELETE FROM order_items');
-    await pool.query('DELETE FROM orders');
-    await pool.query("DELETE FROM products WHERE sku LIKE 'test-%'");
-    await pool.query("DELETE FROM users WHERE email LIKE 'test+%@example.com'");
-  });
-
   it('Cart: add -> get -> remove', async () => {
     const agent = request.agent(app);
 
@@ -90,7 +81,7 @@ describe('Cart & Orders', () => {
     const checkout = await agent.post('/orders');
     expect(checkout.status).toBe(201);
 
-    // NEW: status lifecycle default
+    // status lifecycle default
     expect(checkout.body.order.status).toBe('pending');
 
     expect(checkout.body.order.subtotalCents).toBe(1500);
@@ -108,7 +99,7 @@ describe('Cart & Orders', () => {
     expect(list.status).toBe(200);
     expect(list.body.orders.length).toBe(1);
 
-    // NEW: status visible in list
+    // status visible in list
     expect(list.body.orders[0].status).toBe('pending');
 
     const orderId = list.body.orders[0].id;
@@ -118,7 +109,7 @@ describe('Cart & Orders', () => {
     expect(details.status).toBe(200);
     expect(details.body.order.id).toBe(orderId);
 
-    // NEW: status visible in details
+    // status visible in details
     expect(details.body.order.status).toBe('pending');
 
     expect(details.body.items.length).toBe(1);
@@ -132,7 +123,7 @@ describe('Cart & Orders', () => {
     expect(detailsAfter.status).toBe(200);
     expect(detailsAfter.body.items[0].unitPriceCents).toBe(500);
 
-    // NEW: status stays stable
+    // status stays stable
     expect(detailsAfter.body.order.status).toBe('pending');
   });
 

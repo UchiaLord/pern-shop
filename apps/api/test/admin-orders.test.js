@@ -1,20 +1,12 @@
 import request from 'supertest';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import { createApp } from '../src/app.js';
-import { pool } from '../src/db/pool.js';
 import { createOrderFromCart } from '../src/db/repositories/order-repository.js';
 
 const app = createApp();
 
 describe('Admin Orders (read-only)', () => {
-  beforeEach(async () => {
-    await pool.query('DELETE FROM order_items');
-    await pool.query('DELETE FROM orders');
-    await pool.query("DELETE FROM products WHERE sku LIKE 'test-%'");
-    await pool.query("DELETE FROM users WHERE email LIKE 'test+%@example.com'");
-  });
-
   async function seedOrder() {
     const admin = request.agent(app);
     const adminReg = await admin.post('/auth/register').send({
