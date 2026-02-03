@@ -62,7 +62,11 @@ export function createSessionMiddleware(opts = {}) {
 
     store: new PgSession({
       pool,
-      tableName: 'session'
+      tableName: 'session',
+
+      // Dev/Test: wenn Tabelle fehlt, automatisch anlegen.
+      // Prod: Migration erzwingen (keine impliziten DDLs im Runtime).
+      createTableIfMissing: !isProd
     }),
 
     cookie: {

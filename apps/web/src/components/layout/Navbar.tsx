@@ -49,7 +49,6 @@ export function Navbar() {
   function focusProductsAndSearch(next: string) {
     if (loc.pathname !== '/products') {
       nav('/products', { replace: false });
-      // after navigation, query will still be applied via setQuery
     }
     setQuery(next);
   }
@@ -84,7 +83,8 @@ export function Navbar() {
         <nav className="hidden md:flex items-center gap-1">
           <NavLink to="/products" label="Products" />
           {user && <NavLink to="/orders" label="Orders" />}
-          {isAdmin && <NavLink to="/admin/products" label="Admin" />}
+          {isAdmin && <NavLink to="/admin/products" label="Admin Products" />}
+          {isAdmin && <NavLink to="/admin/orders" label="Admin Orders" />}
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
@@ -158,11 +158,18 @@ export function Navbar() {
             ) : null}
 
             {isAdmin ? (
-              <Link to="/admin/products" onClick={() => setMobileOpen(false)}>
-                <Button variant="ghost" className="w-full justify-start">
-                  Admin
-                </Button>
-              </Link>
+              <>
+                <Link to="/admin/products" onClick={() => setMobileOpen(false)}>
+                  <Button variant="ghost" className="w-full justify-start">
+                    Admin Products
+                  </Button>
+                </Link>
+                <Link to="/admin/orders" onClick={() => setMobileOpen(false)}>
+                  <Button variant="ghost" className="w-full justify-start">
+                    Admin Orders
+                  </Button>
+                </Link>
+              </>
             ) : null}
 
             {user ? (

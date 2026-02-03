@@ -1,35 +1,52 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { AuthContext } from './AuthContext';
+import type { ApiError } from '../lib/types';
 import type { AuthState, User } from './types';
+
+function isUnauthenticated(err: unknown) {
+  const e = err as ApiError | undefined;
+  return e?.error?.code === 'UNAUTHENTICATED';
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const mountedRef = useRef(true);
+
   async function refresh() {
     try {
       const res = await api.auth.me();
-      setUser(res.user);
-    } catch {
-      setUser(null);
+      if (mountedRef.current) setUser(res.user);
+      return;
+    } catch (err: unknown) {
+      // Erwartet: nicht eingeloggt -> 401/UNAUTHENTICATED
+      if (isUnauthenticated(err)) {
+        if (mountedRef.current) setUser(null);
+        return;
+      }
+
+      // Unerwartet: echte Fehler sichtbar machen (aber nicht crashen)
+      console.error('Auth refresh failed:', err);
+      if (mountedRef.current) setUser(null);
     }
   }
 
   useEffect(() => {
-    let mounted = true;
+    mountedRef.current = true;
 
     (async () => {
       setIsLoading(true);
       try {
         await refresh();
       } finally {
-        if (mounted) setIsLoading(false);
+        if (mountedRef.current) setIsLoading(false);
       }
     })();
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
     };
   }, []);
 

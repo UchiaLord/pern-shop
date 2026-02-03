@@ -9,7 +9,10 @@ import ProductsPage from './pages/ProductsPage';
 import CartPage from './pages/CartPage';
 import OrdersPage from './pages/OrdersPage';
 import OrderDetailsPage from './pages/OrderDetailsPage';
+
 import AdminProductsPage from './pages/AdminProductsPage';
+import AdminOrdersPage from './pages/AdminOrdersPage';
+import AdminOrderDetailsPage from './pages/AdminOrderDetailsPage';
 
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -32,15 +35,17 @@ export default function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forbidden" element={<ForbiddenPage />} />
 
-          {/* Authed scope */}
+          {/* Authenticated */}
           <Route element={<RequireAuth />}>
             <Route path="/cart" element={<CartPage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/orders/:id" element={<OrderDetailsPage />} />
 
-            {/* Admin scope */}
+            {/* Admin */}
             <Route element={<RequireRole role="admin" />}>
               <Route path="/admin/products" element={<AdminProductsPage />} />
+              <Route path="/admin/orders" element={<AdminOrdersPage />} />
+              <Route path="/admin/orders/:id" element={<AdminOrderDetailsPage />} />
             </Route>
           </Route>
 

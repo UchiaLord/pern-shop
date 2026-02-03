@@ -26,7 +26,6 @@ async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
       throw data as ApiError;
     }
 
-    // Non-JSON error (proxy, html, text, etc.)
     const message =
       typeof data === 'string' && data.trim().length > 0
         ? data.slice(0, 500)
@@ -51,6 +50,8 @@ type CreateProductInput = {
 type PatchProductInput = Partial<
   Pick<Product, 'sku' | 'name' | 'description' | 'priceCents' | 'currency' | 'isActive'>
 >;
+
+type OrderStatus = 'pending' | 'paid' | 'shipped' | 'completed' | 'cancelled';
 
 export const api = {
   auth: {
@@ -94,12 +95,24 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ productId, quantity }),
       }),
-    removeItem: (productId: number) => request<void>(`/cart/items/${productId}`, { method: 'DELETE' }),
+    removeItem: (productId: number) =>
+      request<void>(`/cart/items/${productId}`, { method: 'DELETE' }),
   },
 
   orders: {
     checkout: () => request<OrderDetails>('/orders', { method: 'POST' }),
     listMine: () => request<{ orders: OrderSummary[] }>('/orders/me'),
     get: (id: number) => request<OrderDetails>(`/orders/${id}`),
+  },
+
+  // admin
+  adminOrders: {
+    list: () => request<{ orders: OrderSummary[] }>('/admin/orders'),
+    get: (id: number) => request<OrderDetails>(`/admin/orders/${id}`),
+    setStatus: (id: number, status: OrderStatus) =>
+      request<{ order: OrderSummary }>(`/admin/orders/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }),
   },
 };

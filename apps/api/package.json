@@ -4,8 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node src/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate": "node db/migrate.cjs",
