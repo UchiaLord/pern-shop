@@ -1,228 +1,108 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-
-import { ErrorBanner, Loading } from '../components/Status';
-import EmptyState from '../components/ui/EmptyState';
-
-import { Button } from '../components/ui/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
-import { formatCents } from '../lib/money';
 import type { OrderDetails } from '../lib/types';
+import { EmptyState, ErrorBanner, Loading, OrderStatusBadge } from '../components/Status';
+import type { OrderStatus } from '../lib/orderStatus';
 
-import { ORDER_STATUS_CLASS, ORDER_STATUS_LABEL, type OrderStatus } from '../lib/orderStatus';
-
-function normalizeStatus(raw: string): OrderStatus {
-  // Backward compatibility for older server values.
-  // "completed" treated like "paid".
-  if (raw === 'completed') return 'paid';
-  if (raw === 'pending' || raw === 'paid' || raw === 'canceled' || raw === 'failed') return raw;
+function coerceOrderStatus(raw: unknown): OrderStatus {
+  if (raw === 'pending' || raw === 'paid' || raw === 'shipped' || raw === 'completed' || raw === 'cancelled') {
+    return raw;
+  }
   return 'pending';
 }
 
-function StatusChip({ status }: { status: string }) {
-  const s = normalizeStatus(status);
-  const base =
-    'inline-flex items-center rounded-2xl border border-white/10 bg-white/8 px-2 py-1 text-xs backdrop-blur-md';
-  const cls = ORDER_STATUS_CLASS[s];
-  const label = ORDER_STATUS_LABEL[s];
-
-  return <span className={`${base} ${cls}`}>{label}</span>;
-}
-
 export default function OrderDetailsPage() {
-  const params = useParams();
-  const id = Number(params.id);
+  const { id } = useParams();
+  const orderId = Number(id);
 
   const [data, setData] = useState<OrderDetails | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const isValidId = Number.isFinite(id) && id > 0;
-
-  async function load() {
-    if (!isValidId) {
-      setError('Ungültige Order-ID.');
-      setIsLoading(false);
-      setData(null);
-      return;
-    }
-
-    setIsLoading(true);
+  async function reload() {
     setError(null);
+    setLoading(true);
     try {
-      const res = await api.orders.get(id);
+      const res = await api.orders.get(orderId);
       setData(res);
     } catch (err: unknown) {
       setError(extractErrorMessage(err));
-      setData(null);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
+    if (!Number.isFinite(orderId) || orderId <= 0) {
+      setLoading(false);
+      setData(null);
+      return;
+    }
+    void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id]);
+  }, [orderId]);
 
-  const subtotal = useMemo(() => {
-    if (!data) return null;
-    return formatCents(data.order.subtotalCents, data.order.currency);
-  }, [data]);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    return <EmptyState message="Ungültige Order-ID." />;
+  }
 
-  const createdAt = useMemo(() => {
-    if (!data) return null;
-    const raw = data.order.createdAt;
-    // Keep it safe: show raw if not parseable
-    const d = new Date(String(raw));
-    if (Number.isNaN(d.getTime())) return String(raw);
-    return d.toLocaleString();
-  }, [data]);
+  if (loading) return <Loading label="Lade Order..." />;
+  if (error) return <ErrorBanner message={error} />;
+  if (!data) return <EmptyState message="Order nicht gefunden." />;
 
-  const status = useMemo(() => {
-    if (!data) return null;
-    return normalizeStatus(String(data.order.status));
-  }, [data]);
+  const { order, items } = data;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="text-xs tracking-widest text-[rgb(var(--muted))]">ACCOUNT</div>
-          <h1 className="text-3xl font-semibold tracking-tight text-[rgb(var(--fg))]">Order Details</h1>
-          <p className="mt-1 text-sm text-[rgb(var(--muted))]">
-            <Link className="hover:underline" to="/orders">
-              Orders
-            </Link>{' '}
-            / #{isValidId ? id : '—'}
-          </p>
+    <div>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-semibold">Order #{order.id}</h2>
+          <OrderStatusBadge status={coerceOrderStatus((order as any).status)} />
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => void load()} disabled={isLoading}>
-            {isLoading ? 'Loading…' : 'Reload'}
-          </Button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void reload()}
+            className="rounded-md border px-3 py-1 text-sm"
+          >
+            Reload
+          </button>
+          <Link className="text-sm underline" to="/orders">
+            Back
+          </Link>
         </div>
       </div>
 
-      {error ? <ErrorBanner message={error} /> : null}
-      {isLoading ? <Loading /> : null}
+      <div className="rounded-lg border p-3">
+        <div className="text-sm opacity-80">
+          Currency: {order.currency} · Subtotal: {order.subtotalCents} cents
+        </div>
+      </div>
 
-      {!isLoading && !error && !data ? (
-        <EmptyState
-          title="Bestellung nicht gefunden"
-          description="Diese Bestellung existiert nicht oder du hast keinen Zugriff darauf."
-          action={
-            <Link to="/orders">
-              <Button>Zurück zu Orders</Button>
-            </Link>
-          }
-        />
-      ) : null}
+      <h3 className="mt-6 mb-2 text-lg font-semibold">Items</h3>
+      <div className="grid gap-2">
+        {items.map((i) => (
+          <div key={i.productId} className="rounded-lg border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{i.name}</div>
+                <div className="text-sm opacity-80">SKU: {i.sku}</div>
+              </div>
 
-      {data ? (
-        <div className="grid gap-4 lg:grid-cols-3">
-          {/* Summary */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader className="space-y-1">
-                <CardTitle className="flex items-center justify-between gap-3">
-                  <span>Summary</span>
-                  <span className="rounded-2xl border border-white/10 bg-white/6 px-2 py-1 text-xs text-[rgb(var(--muted))]">
-                    #{data.order.id}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-[rgb(var(--muted))]">Subtotal</span>
-                  <span className="text-[rgb(var(--fg))]/90">{subtotal}</span>
+              <div className="text-right text-sm">
+                <div>
+                  {i.quantity} × {i.unitPriceCents} cents
                 </div>
-
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-[rgb(var(--muted))]">Status</span>
-                  {status ? <StatusChip status={status} /> : <span className="text-[rgb(var(--fg))]/90">—</span>}
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/6 p-3 text-xs text-[rgb(var(--muted))]">
-                  Created: {createdAt}
-                </div>
-
-                <Link to="/orders">
-                  <Button variant="ghost" className="w-full">
-                    Back to Orders
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Items */}
-          <div className="space-y-4 lg:col-span-2">
-            <div className="flex items-end justify-between">
-              <div>
-                <div className="text-xs tracking-widest text-[rgb(var(--muted))]">ITEMS</div>
-                <div className="text-sm text-[rgb(var(--muted))]">{data.items.length} position(s)</div>
+                <div className="font-semibold">{i.lineTotalCents} cents</div>
               </div>
             </div>
-
-            {data.items.length === 0 ? (
-              <EmptyState
-                title="Keine Items"
-                description="Diese Bestellung enthält keine Positionen."
-                action={
-                  <Link to="/products">
-                    <Button>Produkte ansehen</Button>
-                  </Link>
-                }
-              />
-            ) : null}
-
-            {data.items.length > 0 ? (
-              <motion.div
-                className="grid gap-4 sm:grid-cols-2"
-                initial="hidden"
-                animate="show"
-                variants={{ hidden: {}, show: { transition: { staggerChildren: 0.04 } } }}
-              >
-                {data.items.map((it) => (
-                  <motion.div
-                    key={`${it.productId}-${it.sku}`}
-                    variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
-                    transition={{ duration: 0.18 }}
-                  >
-                    <Card>
-                      <CardHeader className="space-y-1">
-                        <CardTitle className="flex items-start justify-between gap-3">
-                          <span className="min-w-0 truncate">{it.name}</span>
-                          <span className="rounded-2xl border border-white/10 bg-white/6 px-2 py-1 text-xs text-[rgb(var(--muted))]">
-                            {it.sku}
-                          </span>
-                        </CardTitle>
-
-                        <div className="text-sm text-[rgb(var(--muted))]">
-                          {formatCents(it.unitPriceCents, it.currency)} × {it.quantity} ={' '}
-                          <span className="text-[rgb(var(--fg))]/90">
-                            {formatCents(it.lineTotalCents, it.currency)}
-                          </span>
-                        </div>
-                      </CardHeader>
-
-                      <CardContent className="text-xs text-[rgb(var(--muted))]">ProductId: {it.productId}</CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </motion.div>
-            ) : null}
           </div>
-        </div>
-      ) : null}
+        ))}
+      </div>
     </div>
   );
 }

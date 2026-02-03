@@ -1,145 +1,78 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
 
-import { ErrorBanner, Loading } from '../components/Status';
-import EmptyState from '../components/ui/EmptyState';
-
-import { Button } from '../components/ui/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
-import { formatCents } from '../lib/money';
 import type { OrderSummary } from '../lib/types';
+import { EmptyState, ErrorBanner, Loading, OrderStatusBadge } from '../components/Status';
+import type { OrderStatus } from '../lib/orderStatus';
 
-import { ORDER_STATUS_CLASS, ORDER_STATUS_LABEL, type OrderStatus } from '../lib/orderStatus';
-
-function normalizeStatus(raw: string): OrderStatus {
-  // Backward compatibility for older server values.
-  // "completed" treated like "paid".
-  if (raw === 'completed') return 'paid';
-  if (raw === 'pending' || raw === 'paid' || raw === 'canceled' || raw === 'failed') return raw;
+function coerceOrderStatus(raw: unknown): OrderStatus {
+  if (raw === 'pending' || raw === 'paid' || raw === 'shipped' || raw === 'completed' || raw === 'cancelled') {
+    return raw;
+  }
   return 'pending';
-}
-
-function StatusChip({ status }: { status: string }) {
-  const s = normalizeStatus(status);
-  const base = 'inline-flex items-center rounded-2xl border border-white/10 bg-white/8 px-2 py-1 text-xs backdrop-blur-md';
-  const cls = ORDER_STATUS_CLASS[s];
-  const label = ORDER_STATUS_LABEL[s];
-
-  return <span className={`${base} ${cls}`}>{label}</span>;
 }
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const sorted = useMemo(() => {
-    const copy = [...orders];
-    copy.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    return copy;
-  }, [orders]);
-
-  async function load() {
-    setIsLoading(true);
+  async function reload() {
     setError(null);
+    setLoading(true);
     try {
       const res = await api.orders.listMine();
       setOrders(res.orders);
     } catch (err: unknown) {
       setError(extractErrorMessage(err));
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="text-xs tracking-widest text-[rgb(var(--muted))]">ACCOUNT</div>
-          <h1 className="text-3xl font-semibold tracking-tight text-[rgb(var(--fg))]">Orders</h1>
-          <p className="mt-1 text-sm text-[rgb(var(--muted))]">
-            Your recent purchases. Status handling will expand with Stripe webhooks.
-          </p>
-        </div>
+  if (loading) return <Loading label="Lade Orders..." />;
+  if (error) return <ErrorBanner message={error} />;
+  if (orders.length === 0) return <EmptyState message="Keine Bestellungen vorhanden." />;
 
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => void load()} disabled={isLoading}>
-            {isLoading ? 'Loading…' : 'Reload'}
-          </Button>
-        </div>
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold">Orders</h2>
+        <button
+          type="button"
+          onClick={() => void reload()}
+          className="rounded-md border px-3 py-1 text-sm"
+        >
+          Reload
+        </button>
       </div>
 
-      {error ? <ErrorBanner message={error} /> : null}
-      {isLoading ? <Loading /> : null}
+      <div className="grid gap-3">
+        {orders.map((o) => (
+          <div key={o.id} className="flex items-center justify-between gap-4 rounded-lg border p-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <strong className="truncate">Order #{o.id}</strong>
+                <OrderStatusBadge status={coerceOrderStatus((o as any).status)} />
+              </div>
+              <div className="mt-1 text-sm opacity-80">
+                {o.currency} · Subtotal: {o.subtotalCents} cents
+              </div>
+            </div>
 
-      {!isLoading && !error && sorted.length === 0 ? (
-        <EmptyState
-          title="Keine Bestellungen"
-          description="Sobald du etwas kaufst, erscheinen deine Bestellungen hier."
-          action={
-            <Link to="/products">
-              <Button>Produkte entdecken</Button>
+            <Link className="text-sm underline" to={`/orders/${o.id}`}>
+              Details
             </Link>
-          }
-        />
-      ) : null}
-
-      {!isLoading && !error && sorted.length > 0 ? (
-        <motion.div
-          className="grid gap-4"
-          initial="hidden"
-          animate="show"
-          variants={{
-            hidden: {},
-            show: { transition: { staggerChildren: 0.04 } },
-          }}
-        >
-          {sorted.map((o) => (
-            <motion.div
-              key={o.id}
-              variants={{
-                hidden: { opacity: 0, y: 10 },
-                show: { opacity: 1, y: 0 },
-              }}
-              transition={{ duration: 0.18 }}
-            >
-              <Card>
-                <CardHeader className="space-y-1">
-                  <CardTitle className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-2">
-                      <Link className="hover:underline" to={`/orders/${o.id}`}>
-                        Order #{o.id}
-                      </Link>
-                      <StatusChip status={o.status} />
-                    </div>
-
-                    <div className="text-sm text-[rgb(var(--muted))]">
-                      {formatCents(o.subtotalCents, o.currency)}
-                    </div>
-                  </CardTitle>
-
-                  <div className="text-xs text-[rgb(var(--muted))]">{o.createdAt}</div>
-                </CardHeader>
-
-                <CardContent className="flex items-center justify-end">
-                  <Link to={`/orders/${o.id}`}>
-                    <Button variant="ghost">Details</Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </motion.div>
-      ) : null}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
