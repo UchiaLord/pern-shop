@@ -21,6 +21,34 @@ function assertTransition(current, next) {
   }
 }
 
+function getAllowedNextStatuses(currentStatus) {
+  const allowed = ALLOWED_TRANSITIONS[currentStatus];
+  if (!allowed) return [];
+  return Array.from(allowed);
+}
+
+function normalizeReason(value) {
+  if (value == null) return null;
+  if (typeof value !== 'string') return null;
+  const s = value.trim();
+  if (s.length === 0) return null;
+  if (s.length > 500) {
+    throw new HttpError({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      message: 'Reason ist zu lang (max 500).',
+    });
+  }
+  return s;
+}
+
+function normalizeActorUserId(value) {
+  if (value == null) return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return n;
+}
+
 /**
  * Erstellt Order aus Cart Items und friert Preise ein.
  * items: [{ productId, quantity }]
@@ -269,7 +297,7 @@ export async function listAllOrdersAdmin() {
 }
 
 /**
- * Admin: Order Details inkl Items
+ * Admin: Order Details inkl Items (+ statusEvents + allowedNextStatuses)
  */
 export async function getOrderDetailsAdmin(orderId) {
   const orderRes = await pool.query(
@@ -301,6 +329,27 @@ export async function getOrderDetailsAdmin(orderId) {
     [orderId],
   );
 
+  const eventsRes = await pool.query(
+    `
+    SELECT id, from_status, to_status, actor_user_id, reason, created_at
+    FROM order_status_events
+    WHERE order_id = $1
+    ORDER BY id ASC
+    `,
+    [orderId],
+  );
+
+  const statusEvents = eventsRes.rows.map((e) => ({
+    id: Number(e.id),
+    fromStatus: e.from_status,
+    toStatus: e.to_status,
+    actorUserId: e.actor_user_id == null ? null : Number(e.actor_user_id),
+    reason: e.reason ?? null,
+    createdAt: e.created_at,
+  }));
+
+  const allowedNextStatuses = getAllowedNextStatuses(o.status);
+
   return {
     order: {
       id: Number(o.id),
@@ -313,6 +362,8 @@ export async function getOrderDetailsAdmin(orderId) {
       paidAt: o.paid_at,
       shippedAt: o.shipped_at,
       completedAt: o.completed_at,
+      statusEvents,
+      allowedNextStatuses,
     },
     items: itemsRes.rows.map((i) => ({
       productId: Number(i.product_id),
@@ -327,9 +378,16 @@ export async function getOrderDetailsAdmin(orderId) {
 }
 
 /**
- * Admin: Status Update (Transition-Guards) + Status-Timestamps
+ * Admin: Status Update (Transition-Guards) + Status-Timestamps + Status Events
+ *
+ * Backward compatible:
+ * - alte Calls: updateOrderStatusAdmin(orderId, nextStatus)
+ * - neue Calls: updateOrderStatusAdmin(orderId, nextStatus, actorUserId, reason)
  */
-export async function updateOrderStatusAdmin(orderId, nextStatus) {
+export async function updateOrderStatusAdmin(orderId, nextStatus, actorUserId, reason) {
+  const actorId = normalizeActorUserId(actorUserId);
+  const normalizedReason = normalizeReason(reason);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -394,6 +452,15 @@ export async function updateOrderStatusAdmin(orderId, nextStatus) {
       RETURNING id, user_id, status, currency, subtotal_cents, created_at, updated_at, paid_at, shipped_at, completed_at
       `,
       [orderId, nextStatus],
+    );
+
+    // Event wird immer geloggt, actor_user_id kann NULL sein (backward compat)
+    await client.query(
+      `
+      INSERT INTO order_status_events (order_id, from_status, to_status, actor_user_id, reason)
+      VALUES ($1, $2, $3, $4, $5)
+      `,
+      [orderId, currentStatus, nextStatus, actorId, normalizedReason],
     );
 
     await client.query('COMMIT');

@@ -21,6 +21,8 @@ const idParamsSchema = z.object({
 
 const updateStatusSchema = z.object({
   status: z.enum(['pending', 'paid', 'shipped', 'completed', 'cancelled']),
+  // optional, aber wenn vorhanden: trim + 1..500
+  reason: z.string().trim().min(1).max(500).optional(),
 });
 
 /**
@@ -51,16 +53,19 @@ adminOrdersRouter.get(
 
 /**
  * PATCH /admin/orders/:id/status
- * Admin kann Status ändern (mit Transition-Guards).
+ * Admin kann Status ändern (mit Transition-Guards) + optionaler reason.
  */
 adminOrdersRouter.patch(
   '/:id/status',
   validate({ params: idParamsSchema, body: updateStatusSchema }),
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const { status } = req.body;
+    const { status, reason } = req.body;
 
-    const updated = await updateOrderStatusAdmin(id, status);
+    // requireRole setzt voraus: req.session.user existiert und enthält id + role
+    const actorUserId = req.session?.user?.id;
+
+    const updated = await updateOrderStatusAdmin(id, status, actorUserId, reason);
     res.status(200).json({ order: updated });
   }),
 );
