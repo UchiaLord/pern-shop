@@ -5,6 +5,10 @@ import { HttpError } from '../../errors/http-error.js';
  * Erzeugt eine Order aus Cart-Items.
  * Preise werden aus der products-Tabelle gelesen und in order_items eingefroren.
  *
+ * Status Lifecycle (Day 20):
+ * pending | paid | canceled | failed
+ * Neue Orders starten immer als "pending".
+ *
  * @param {number} userId
  * @param {Array<{productId: number, quantity: number}>} cartItems
  * @returns {Promise<{order: any, items: any[]}>}
@@ -111,10 +115,11 @@ export async function createOrderFromCart(userId, cartItems) {
 
     const subtotalCents = normalizedItems.reduce((sum, i) => sum + i.lineTotalCents, 0);
 
+    // Day 20 lifecycle: new orders start as "pending"
     const orderRes = await client.query(
       `
       INSERT INTO orders (user_id, status, currency, subtotal_cents)
-      VALUES ($1, 'created', $2, $3)
+      VALUES ($1, 'pending', $2, $3)
       RETURNING id, user_id, status, currency, subtotal_cents, created_at
       `,
       [userId, currency ?? 'EUR', subtotalCents]

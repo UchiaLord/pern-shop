@@ -43,9 +43,7 @@ describe('Cart & Orders', () => {
     const productId = created.body.product.id;
 
     // add item
-    const add = await agent
-      .post('/cart/items')
-      .send({ productId, quantity: 2 });
+    const add = await agent.post('/cart/items').send({ productId, quantity: 2 });
     expect(add.status).toBe(200);
 
     // get cart
@@ -91,6 +89,10 @@ describe('Cart & Orders', () => {
 
     const checkout = await agent.post('/orders');
     expect(checkout.status).toBe(201);
+
+    // NEW: status lifecycle default
+    expect(checkout.body.order.status).toBe('pending');
+
     expect(checkout.body.order.subtotalCents).toBe(1500);
     expect(checkout.body.items.length).toBe(1);
     expect(checkout.body.items[0].unitPriceCents).toBe(500);
@@ -106,24 +108,32 @@ describe('Cart & Orders', () => {
     expect(list.status).toBe(200);
     expect(list.body.orders.length).toBe(1);
 
+    // NEW: status visible in list
+    expect(list.body.orders[0].status).toBe('pending');
+
     const orderId = list.body.orders[0].id;
 
     // Details
     const details = await agent.get(`/orders/${orderId}`);
     expect(details.status).toBe(200);
     expect(details.body.order.id).toBe(orderId);
+
+    // NEW: status visible in details
+    expect(details.body.order.status).toBe('pending');
+
     expect(details.body.items.length).toBe(1);
     expect(details.body.items[0].lineTotalCents).toBe(1500);
 
     // Preis im Produkt ändern, Order bleibt gleich (eingefroren)
-    const patch = await admin
-      .patch(`/products/${productId}`)
-      .send({ priceCents: 999 });
+    const patch = await admin.patch(`/products/${productId}`).send({ priceCents: 999 });
     expect(patch.status).toBe(200);
 
     const detailsAfter = await agent.get(`/orders/${orderId}`);
     expect(detailsAfter.status).toBe(200);
     expect(detailsAfter.body.items[0].unitPriceCents).toBe(500);
+
+    // NEW: status stays stable
+    expect(detailsAfter.body.order.status).toBe('pending');
   });
 
   it('Checkout: 400 CART_EMPTY wenn Cart leer ist', async () => {
