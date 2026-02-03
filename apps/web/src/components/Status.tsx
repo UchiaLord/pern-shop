@@ -13,15 +13,6 @@ export function EmptyState({ message }: { message: string }) {
   return <div style={{ opacity: 0.8 }}>{message}</div>;
 }
 
-function fallbackLabel(status: string) {
-  // defensive: falls API mal etwas Unerwartetes liefert
-  return status;
-}
-
-function isOrderStatus(x: string): x is OrderStatus {
-  return x === 'pending' || x === 'paid' || x === 'shipped' || x === 'completed' || x === 'cancelled';
-}
-
 /**
  * Read-only badge for order lifecycle.
  * Uses Tailwind classes from lib/orderStatus.
