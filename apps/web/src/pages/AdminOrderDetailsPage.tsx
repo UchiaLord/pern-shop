@@ -5,16 +5,12 @@ import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
 import type { OrderDetails } from '../lib/types';
 import { EmptyState, ErrorBanner, Loading, OrderStatusBadge } from '../components/Status';
-import { getOrderStatusActions, type OrderStatus } from '../lib/orderStatus';
-
-type OrderDetailsWithTimestamps = OrderDetails & {
-  order: OrderDetails['order'] & {
-    paidAt?: string | null;
-    shippedAt?: string | null;
-    completedAt?: string | null;
-    updatedAt?: string | null;
-  };
-};
+import {
+  ORDER_STATUS_LABEL,
+  allowedNextStatuses,
+  isTerminalStatus,
+  type OrderStatus,
+} from '../lib/orderStatus';
 
 function fmtMaybeIso(iso?: string | null) {
   if (!iso) return '—';
@@ -23,11 +19,26 @@ function fmtMaybeIso(iso?: string | null) {
   return d.toLocaleString();
 }
 
+function statusIndex(s: OrderStatus) {
+  // Cancelled ist terminal “side path”
+  if (s === 'cancelled') return -1;
+  if (s === 'pending') return 0;
+  if (s === 'paid') return 1;
+  if (s === 'shipped') return 2;
+  return 3; // completed
+}
+
+type Step = {
+  key: OrderStatus;
+  title: string;
+  time?: string | null | undefined;
+};
+
 export default function AdminOrderDetailsPage() {
   const { id } = useParams();
   const orderId = Number(id);
 
-  const [data, setData] = useState<OrderDetailsWithTimestamps | null>(null);
+  const [data, setData] = useState<OrderDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +50,7 @@ export default function AdminOrderDetailsPage() {
     setLoading(true);
     try {
       const res = await api.adminOrders.get(orderId);
-      setData(res as OrderDetailsWithTimestamps);
+      setData(res as OrderDetails);
     } catch (err: unknown) {
       setError(extractErrorMessage(err));
     } finally {
@@ -58,8 +69,7 @@ export default function AdminOrderDetailsPage() {
   }, [orderId]);
 
   const currentStatus = (data?.order.status ?? 'pending') as OrderStatus;
-
-  const actions = useMemo(() => getOrderStatusActions(currentStatus), [currentStatus]);
+  const nextOptions = useMemo(() => allowedNextStatuses(currentStatus), [currentStatus]);
 
   async function applyStatus(next: OrderStatus) {
     if (!data) return;
@@ -75,15 +85,12 @@ export default function AdminOrderDetailsPage() {
     }
   }
 
-  function onAction(next: OrderStatus) {
-    const action = actions.find((a) => a.nextStatus === next);
-
-    if (action?.confirm) {
-      const ok = window.confirm(action.confirm.message);
-      if (!ok) return;
-    }
-
-    void applyStatus(next);
+  function onCancel() {
+    const ok = window.confirm(
+      'Order wirklich stornieren?\n\nDas setzt den Status auf "cancelled". Danach sind keine weiteren Transitions mehr möglich.',
+    );
+    if (!ok) return;
+    void applyStatus('cancelled');
   }
 
   if (!Number.isFinite(orderId) || orderId <= 0) {
@@ -95,6 +102,20 @@ export default function AdminOrderDetailsPage() {
   if (!data) return <EmptyState message="Order nicht gefunden." />;
 
   const { order, items } = data;
+
+  const canPaid = nextOptions.includes('paid');
+  const canShipped = nextOptions.includes('shipped');
+  const canCompleted = nextOptions.includes('completed');
+  const canCancelled = nextOptions.includes('cancelled');
+
+  const curIdx = statusIndex(currentStatus);
+
+  const steps: Step[] = [
+    { key: 'pending', title: ORDER_STATUS_LABEL.pending, time: order.createdAt },
+    { key: 'paid', title: ORDER_STATUS_LABEL.paid, time: order.paidAt },
+    { key: 'shipped', title: ORDER_STATUS_LABEL.shipped, time: order.shippedAt },
+    { key: 'completed', title: ORDER_STATUS_LABEL.completed, time: order.completedAt },
+  ];
 
   return (
     <div>
@@ -139,30 +160,107 @@ export default function AdminOrderDetailsPage() {
           </div>
         </div>
 
+        {/* B1.3 Timeline */}
+        <div className="mt-4 rounded-lg border p-3">
+          <div className="mb-2 text-sm font-medium">Status Timeline</div>
+
+          {currentStatus === 'cancelled' ? (
+            <div className="text-sm">
+              <div className="mb-2">
+                <OrderStatusBadge status="cancelled" /> <span className="ml-2">{ORDER_STATUS_LABEL.cancelled}</span>
+              </div>
+              <div className="opacity-80">
+                Die Order wurde storniert. Weitere Transitions sind nicht möglich.
+              </div>
+            </div>
+          ) : (
+            <ol className="grid gap-2">
+              {steps.map((s) => {
+                const idx = statusIndex(s.key);
+                const done = idx <= curIdx;
+                const isCurrent = idx === curIdx && !isTerminalStatus(currentStatus);
+
+                const dotBase = 'h-3 w-3 rounded-full border';
+                const dot = done ? `${dotBase} bg-white` : `${dotBase} bg-transparent opacity-40`;
+                const row = done ? '' : 'opacity-60';
+
+                return (
+                  <li key={s.key} className={`flex items-start gap-3 ${row}`}>
+                    <div className="mt-1 flex flex-col items-center">
+                      <div className={dot} />
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-medium">{s.title}</div>
+                        {isCurrent ? <span className="text-xs opacity-70">(current)</span> : null}
+                        {done ? <OrderStatusBadge status={s.key} /> : null}
+                      </div>
+                      <div className="mt-0.5 text-xs opacity-70">
+                        {s.key === 'pending' ? fmtMaybeIso(order.createdAt) : fmtMaybeIso(s.time)}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <div className="text-sm font-medium">Aktionen:</div>
 
-          {actions.length === 0 ? (
+          {nextOptions.length === 0 ? (
             <div className="text-sm opacity-70">Keine weiteren Transitions möglich.</div>
           ) : (
             <>
-              {actions.map((a) => {
-                const base = 'rounded-md border px-3 py-1 text-sm';
-                const danger = a.variant === 'danger' ? ' border-red-500/60 text-red-300' : '';
-                const cls = base + danger;
+              {canPaid ? (
+                <button
+                  type="button"
+                  onClick={() => void applyStatus('paid')}
+                  className="rounded-md border px-3 py-1 text-sm"
+                  disabled={busy}
+                  title={ORDER_STATUS_LABEL.paid}
+                >
+                  Mark as paid
+                </button>
+              ) : null}
 
-                return (
-                  <button
-                    key={a.nextStatus}
-                    type="button"
-                    onClick={() => onAction(a.nextStatus)}
-                    className={cls}
-                    disabled={busy}
-                  >
-                    {a.label}
-                  </button>
-                );
-              })}
+              {canShipped ? (
+                <button
+                  type="button"
+                  onClick={() => void applyStatus('shipped')}
+                  className="rounded-md border px-3 py-1 text-sm"
+                  disabled={busy}
+                  title={ORDER_STATUS_LABEL.shipped}
+                >
+                  Mark as shipped
+                </button>
+              ) : null}
+
+              {canCompleted ? (
+                <button
+                  type="button"
+                  onClick={() => void applyStatus('completed')}
+                  className="rounded-md border px-3 py-1 text-sm"
+                  disabled={busy}
+                  title={ORDER_STATUS_LABEL.completed}
+                >
+                  Mark as completed
+                </button>
+              ) : null}
+
+              {canCancelled ? (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="rounded-md border border-red-500/60 px-3 py-1 text-sm text-red-300"
+                  disabled={busy}
+                  title={ORDER_STATUS_LABEL.cancelled}
+                >
+                  Cancel order
+                </button>
+              ) : null}
 
               {busy ? <div className="text-sm opacity-70">Updating…</div> : null}
               {actionError ? <div className="text-sm text-red-400">{actionError}</div> : null}
@@ -190,6 +288,10 @@ export default function AdminOrderDetailsPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-6 text-sm opacity-60">
+        Allowed transitions from <code>{currentStatus}</code>: {nextOptions.join(', ') || 'none'}
       </div>
     </div>
   );

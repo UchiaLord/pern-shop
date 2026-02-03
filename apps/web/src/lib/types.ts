@@ -1,3 +1,5 @@
+import type { OrderStatus } from './orderStatus';
+
 export type ApiError = {
   error: {
     code: string;
@@ -36,10 +38,16 @@ export type Cart = {
 
 export type OrderSummary = {
   id: number;
-  status: string;
+  status: OrderStatus;
   currency: string;
   subtotalCents: number;
   createdAt: string;
+
+
+  updatedAt?: string | null;
+  paidAt?: string | null;
+  shippedAt?: string | null;
+  completedAt?: string | null;
 };
 
 export type OrderDetails = {
