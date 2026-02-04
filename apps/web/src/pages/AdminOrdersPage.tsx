@@ -6,17 +6,14 @@ import type { OrderSummary } from '../lib/types';
 import { extractErrorMessage } from '../lib/errors';
 
 function formatMoney(cents: number, currency: string) {
-  return new Intl.NumberFormat('de-AT', { style: 'currency', currency }).format(
-    cents / 100,
-  );
+  return new Intl.NumberFormat('de-AT', { style: 'currency', currency }).format(cents / 100);
 }
 
 function formatDate(iso: string) {
   try {
-    return new Intl.DateTimeFormat('de-AT', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(iso));
+    return new Intl.DateTimeFormat('de-AT', { dateStyle: 'medium', timeStyle: 'short' }).format(
+      new Date(iso),
+    );
   } catch {
     return iso;
   }
@@ -43,31 +40,40 @@ export default function AdminOrdersPage() {
   function reload() {
     loadOrders()
       .then((res) => {
-        setOrders(res.orders);
+        // Defensive: falls API mal "null" oder falsches Shape liefert
+        const next = Array.isArray((res as any)?.orders) ? (res as any).orders : [];
+        setOrders(next);
+        if (!Array.isArray((res as any)?.orders)) {
+          setError('Unerwartete Server-Antwort (orders fehlt).');
+        }
       })
       .catch((err: unknown) => {
         setError(extractErrorMessage(err));
+        setOrders([]); // damit UI stabil bleibt
       });
   }
 
   useEffect(() => {
-    // setState passiert nur in Promise callbacks, nicht synchron im effect body.
     loadOrders()
       .then((res) => {
-        setOrders(res.orders);
+        const next = Array.isArray((res as any)?.orders) ? (res as any).orders : [];
+        setOrders(next);
+        if (!Array.isArray((res as any)?.orders)) {
+          setError('Unerwartete Server-Antwort (orders fehlt).');
+        }
       })
       .catch((err: unknown) => {
         setError(extractErrorMessage(err));
+        setOrders([]);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div style={{ padding: 16 }}>
       <h2>Admin – Orders</h2>
 
-      <div
-        style={{ margin: '12px 0', display: 'flex', gap: 12, flexWrap: 'wrap' }}
-      >
+      <div style={{ margin: '12px 0', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <button onClick={reload}>Reload</button>
         <div>
           <strong>Total:</strong> {totals.count}
@@ -89,9 +95,7 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {error && (
-        <div style={{ color: 'crimson', marginBottom: 12 }}>{error}</div>
-      )}
+      {error && <div style={{ color: 'crimson', marginBottom: 12 }}>{error}</div>}
 
       {orders.length === 0 ? (
         <div>Keine Orders.</div>
@@ -100,32 +104,18 @@ export default function AdminOrdersPage() {
           <thead>
             <tr style={{ textAlign: 'left' }}>
               <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>ID</th>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>
-                Status
-              </th>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>
-                Subtotal
-              </th>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>
-                Created
-              </th>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>
-                Updated
-              </th>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>
-                Action
-              </th>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Status</th>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Subtotal</th>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Created</th>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Updated</th>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Action</th>
             </tr>
           </thead>
           <tbody>
             {orders.map((o) => (
               <tr key={o.id}>
-                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
-                  {o.id}
-                </td>
-                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
-                  {o.status}
-                </td>
+                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{o.id}</td>
+                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{o.status}</td>
                 <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
                   {formatMoney(o.subtotalCents, o.currency)}
                 </td>

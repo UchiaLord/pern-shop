@@ -1,5 +1,6 @@
+// apps/web/src/pages/AdminProductsPage.tsx
 import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import type { FormEvent } from 'react';import { motion } from 'framer-motion';
 
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
@@ -15,7 +16,7 @@ type FormState = {
   sku: string;
   name: string;
   description: string;
-  priceCents: string;
+  priceCents: string; // string im UI, number erst beim Submit
   currency: string;
   isActive: boolean;
 };
@@ -34,10 +35,14 @@ function normalizeCurrency(input: string): string {
   return c || 'EUR';
 }
 
-function parseNonNegativeInt(value: string): { ok: true; value: number } | { ok: false; message: string } {
+function parseNonNegativeInt(
+  value: string,
+): { ok: true; value: number } | { ok: false; message: string } {
   const raw = value.trim();
+
   if (raw.length === 0) return { ok: false, message: 'priceCents ist erforderlich.' };
-  if (!/^\d+$/.test(raw)) return { ok: false, message: 'priceCents muss eine nicht-negative ganze Zahl sein.' };
+  if (!/^\d+$/.test(raw))
+    return { ok: false, message: 'priceCents muss eine nicht-negative ganze Zahl sein.' };
 
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
@@ -95,7 +100,7 @@ export default function AdminProductsPage() {
     void loadProducts();
   }, []);
 
-  async function onCreate(e: React.FormEvent) {
+  async function onCreate(e: FormEvent) {
     e.preventDefault();
     if (isSubmitting) return;
 
@@ -208,12 +213,18 @@ export default function AdminProductsPage() {
               <form onSubmit={(e) => void onCreate(e)} className="space-y-3">
                 <div className="space-y-1">
                   <div className="text-xs text-[rgb(var(--muted))]">SKU</div>
-                  <Input value={form.sku} onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))} />
+                  <Input
+                    value={form.sku}
+                    onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                  />
                 </div>
 
                 <div className="space-y-1">
                   <div className="text-xs text-[rgb(var(--muted))]">Name</div>
-                  <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+                  <Input
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  />
                 </div>
 
                 <div className="space-y-1">
@@ -231,17 +242,24 @@ export default function AdminProductsPage() {
                   <div className="space-y-1">
                     <div className="text-xs text-[rgb(var(--muted))]">Price (cents)</div>
                     <Input
+                      // Wichtig: text statt number -> keine Locale/Step-Probleme
+                      type="text"
+                      name="priceCents"
                       value={form.priceCents}
                       onChange={(e) => setForm((f) => ({ ...f, priceCents: e.target.value }))}
                       inputMode="numeric"
-                      pattern="^\\d+$"
-                      placeholder="e.g. 1999"
+                      pattern="^[0-9]+$"
+                      placeholder="z.B. 2000"
+                      required
                     />
                   </div>
 
                   <div className="space-y-1">
                     <div className="text-xs text-[rgb(var(--muted))]">Currency</div>
-                    <Input value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))} />
+                    <Input
+                      value={form.currency}
+                      onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
+                    />
                   </div>
                 </div>
 
@@ -267,7 +285,9 @@ export default function AdminProductsPage() {
         <div className="lg:col-span-2">
           {isLoading ? <Loading /> : null}
 
-          {!isLoading && !pageError && sortedProducts.length === 0 ? <EmptyState message="Keine Produkte." /> : null}
+          {!isLoading && !pageError && sortedProducts.length === 0 ? (
+            <EmptyState message="Keine Produkte." />
+          ) : null}
 
           {!isLoading && sortedProducts.length > 0 ? (
             <motion.div
@@ -292,7 +312,9 @@ export default function AdminProductsPage() {
                             <div className="truncate">
                               <span className="text-[rgb(var(--muted))]">{p.sku}</span> — {p.name}
                             </div>
-                            <div className="mt-1 text-sm text-[rgb(var(--muted))]">{formatCents(p.priceCents, p.currency)}</div>
+                            <div className="mt-1 text-sm text-[rgb(var(--muted))]">
+                              {formatCents(p.priceCents, p.currency)}
+                            </div>
                           </div>
 
                           <StatusChip active={p.isActive} />
@@ -307,7 +329,11 @@ export default function AdminProductsPage() {
                         )}
 
                         <div className="flex items-center justify-end">
-                          <Button variant={p.isActive ? 'danger' : 'primary'} disabled={pending} onClick={() => void toggleActive(p.id)}>
+                          <Button
+                            variant={p.isActive ? 'danger' : 'primary'}
+                            disabled={pending}
+                            onClick={() => void toggleActive(p.id)}
+                          >
                             {pending ? 'Saving…' : p.isActive ? 'Deactivate' : 'Activate'}
                           </Button>
                         </div>
