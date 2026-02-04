@@ -1,3 +1,4 @@
+// apps/web/src/pages/AdminOrdersPage.tsx
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -23,6 +24,16 @@ function formatDate(iso: string) {
   }
 }
 
+type OrdersListResponse = { orders: OrderSummary[] };
+
+function isOrdersListResponse(value: unknown): value is OrdersListResponse {
+  if (typeof value !== 'object' || value === null) return false;
+  if (!('orders' in value)) return false;
+
+  const maybe = value as { orders?: unknown };
+  return Array.isArray(maybe.orders);
+}
+
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -44,12 +55,14 @@ export default function AdminOrdersPage() {
     try {
       const res = await api.admin.orders.list();
 
-      const next = Array.isArray((res as any)?.orders) ? ((res as any).orders as OrderSummary[]) : [];
-      setOrders(next);
-
-      if (!Array.isArray((res as any)?.orders)) {
+      // Falls api/admin plötzlich ein anderes Shape liefert, UI bleibt stabil.
+      if (!isOrdersListResponse(res)) {
+        setOrders([]);
         setError('Unerwartete Server-Antwort (orders fehlt).');
+        return;
       }
+
+      setOrders(res.orders);
     } catch (err: unknown) {
       setOrders([]);
       setError(extractErrorMessage(err));
@@ -103,7 +116,7 @@ export default function AdminOrdersPage() {
       {!loading && orders.length === 0 ? (
         <EmptyState title="Keine Orders" description="Es wurden noch keine Bestellungen gefunden." />
       ) : (
-        <Card className="overflow-hidden p-0">
+        <Card className="p-0 overflow-hidden">
           <div className="w-full overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
