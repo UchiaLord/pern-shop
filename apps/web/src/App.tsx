@@ -1,10 +1,12 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+// apps/web/src/App.tsx
+import { Route, Routes } from 'react-router-dom';
 
 import { Navbar } from './components/layout/Navbar';
 
 import RequireAuth from './auth/RequireAuth';
 import RequireRole from './auth/RequireRole';
 
+import LandingPage from './pages/LandingPage';
 import ProductsPage from './pages/ProductsPage';
 import CartPage from './pages/CartPage';
 import OrdersPage from './pages/OrdersPage';
@@ -26,8 +28,8 @@ export default function App() {
 
       <main className="mx-auto w-full max-w-6xl px-4 py-6">
         <Routes>
-          {/* Default */}
-          <Route path="/" element={<Navigate to="/products" replace />} />
+          {/* Landing */}
+          <Route path="/" element={<LandingPage />} />
 
           {/* Public */}
           <Route path="/products" element={<ProductsPage />} />
