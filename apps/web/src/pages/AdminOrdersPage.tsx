@@ -24,7 +24,7 @@ function formatDate(iso: string) {
   }
 }
 
-function normalizeOrdersResponse(input: unknown): OrderSummary[] {
+function normalizeOrders(input: unknown): OrderSummary[] {
   if (typeof input !== 'object' || input === null) return [];
   const maybe = input as { orders?: unknown };
   return Array.isArray(maybe.orders) ? (maybe.orders as OrderSummary[]) : [];
@@ -50,11 +50,13 @@ export default function AdminOrdersPage() {
 
     try {
       const res = await api.admin.orders.list();
-      const next = normalizeOrdersResponse(res);
+      const next = normalizeOrders(res);
+
       setOrders(next);
 
+      // If backend shape is wrong, show a human-readable error, but keep UI stable.
       if (!Array.isArray((res as { orders?: unknown }).orders)) {
-        setError('Unerwartete Server-Antwort (orders fehlt oder ist kein Array).');
+        setError('Unerwartete Server-Antwort: "orders" fehlt oder ist kein Array.');
       }
     } catch (err: unknown) {
       setOrders([]);
@@ -67,6 +69,8 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     void fetchOrders();
   }, [fetchOrders]);
+
+  const hasOrders = orders.length > 0;
 
   return (
     <div className="space-y-4">
@@ -106,7 +110,13 @@ export default function AdminOrdersPage() {
         </Card>
       )}
 
-      {!loading && orders.length === 0 ? (
+      {loading && (
+        <Card className="p-4">
+          <div className="text-sm">Lade Bestellungen…</div>
+        </Card>
+      )}
+
+      {!loading && !hasOrders ? (
         <EmptyState title="Keine Orders" description="Es wurden noch keine Bestellungen gefunden." />
       ) : (
         <Card className="overflow-hidden p-0">
