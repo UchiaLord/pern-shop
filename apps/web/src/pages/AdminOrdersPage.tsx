@@ -1,69 +1,148 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api } from '../lib/api';
-import { extractErrorMessage } from '../lib/errors';
 import type { OrderSummary } from '../lib/types';
-import { EmptyState, ErrorBanner, Loading, OrderStatusBadge } from '../components/Status';
+import { extractErrorMessage } from '../lib/errors';
+
+function formatMoney(cents: number, currency: string) {
+  return new Intl.NumberFormat('de-AT', { style: 'currency', currency }).format(
+    cents / 100,
+  );
+}
+
+function formatDate(iso: string) {
+  try {
+    return new Intl.DateTimeFormat('de-AT', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function reload() {
+  const totals = useMemo(() => {
+    const count = orders.length;
+    const byStatus = orders.reduce<Record<string, number>>((acc, o) => {
+      acc[o.status] = (acc[o.status] ?? 0) + 1;
+      return acc;
+    }, {});
+    return { count, byStatus };
+  }, [orders]);
+
+  function loadOrders() {
     setError(null);
-    setLoading(true);
-    try {
-      const res = await api.adminOrders.list();
-      setOrders(res.orders);
-    } catch (err: unknown) {
-      setError(extractErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
+    return api.admin.orders.list();
+  }
+
+  function reload() {
+    loadOrders()
+      .then((res) => {
+        setOrders(res.orders);
+      })
+      .catch((err: unknown) => {
+        setError(extractErrorMessage(err));
+      });
   }
 
   useEffect(() => {
-    void reload();
+    // setState passiert nur in Promise callbacks, nicht synchron im effect body.
+    loadOrders()
+      .then((res) => {
+        setOrders(res.orders);
+      })
+      .catch((err: unknown) => {
+        setError(extractErrorMessage(err));
+      });
   }, []);
 
-  if (loading) return <Loading label="Lade Admin Orders..." />;
-  if (error) return <ErrorBanner message={error} />;
-  if (orders.length === 0) return <EmptyState message="Keine Bestellungen vorhanden." />;
-
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">Admin Orders</h2>
-        <button
-          type="button"
-          onClick={() => void reload()}
-          className="rounded-md border px-3 py-1 text-sm"
-        >
-          Reload
-        </button>
+    <div style={{ padding: 16 }}>
+      <h2>Admin – Orders</h2>
+
+      <div
+        style={{ margin: '12px 0', display: 'flex', gap: 12, flexWrap: 'wrap' }}
+      >
+        <button onClick={reload}>Reload</button>
+        <div>
+          <strong>Total:</strong> {totals.count}
+        </div>
+        <div>
+          <strong>Pending:</strong> {totals.byStatus.pending ?? 0}
+        </div>
+        <div>
+          <strong>Paid:</strong> {totals.byStatus.paid ?? 0}
+        </div>
+        <div>
+          <strong>Shipped:</strong> {totals.byStatus.shipped ?? 0}
+        </div>
+        <div>
+          <strong>Completed:</strong> {totals.byStatus.completed ?? 0}
+        </div>
+        <div>
+          <strong>Cancelled:</strong> {totals.byStatus.cancelled ?? 0}
+        </div>
       </div>
 
-      <div className="grid gap-3">
-        {orders.map((o) => (
-          <div key={o.id} className="flex items-center justify-between gap-4 rounded-lg border p-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <strong className="truncate">Order #{o.id}</strong>
-                <OrderStatusBadge status={o.status} />
-              </div>
-              <div className="mt-1 text-sm opacity-80">
-                {o.currency} · Subtotal: {o.subtotalCents} cents
-              </div>
-            </div>
+      {error && (
+        <div style={{ color: 'crimson', marginBottom: 12 }}>{error}</div>
+      )}
 
-            <Link className="text-sm underline" to={`/admin/orders/${o.id}`}>
-              Details
-            </Link>
-          </div>
-        ))}
-      </div>
+      {orders.length === 0 ? (
+        <div>Keine Orders.</div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ textAlign: 'left' }}>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>ID</th>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>
+                Status
+              </th>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>
+                Subtotal
+              </th>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>
+                Created
+              </th>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>
+                Updated
+              </th>
+              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>
+                Action
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o) => (
+              <tr key={o.id}>
+                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
+                  {o.id}
+                </td>
+                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
+                  {o.status}
+                </td>
+                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
+                  {formatMoney(o.subtotalCents, o.currency)}
+                </td>
+                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
+                  {formatDate(o.createdAt)}
+                </td>
+                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
+                  {formatDate(o.updatedAt)}
+                </td>
+                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
+                  <Link to={`/admin/orders/${o.id}`}>Open</Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

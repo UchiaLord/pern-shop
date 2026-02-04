@@ -1,12 +1,13 @@
+// apps/web/src/auth/AuthProvider.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+
 import { api } from '../lib/api';
 import { AuthContext } from './AuthContext';
-import type { ApiError } from '../lib/types';
 import type { AuthState, User } from './types';
 
 function isUnauthenticated(err: unknown) {
-  const e = err as ApiError | undefined;
-  return e?.error?.code === 'UNAUTHENTICATED';
+  const e = err as { code?: string; status?: number } | undefined;
+  return e?.code === 'UNAUTHENTICATED' || e?.status === 401;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

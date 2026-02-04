@@ -1,4 +1,14 @@
-import type { ApiError, Cart, OrderDetails, OrderSummary, Product, User } from './types';
+// apps/web/src/lib/api.ts
+import type {
+  ApiError,
+  Cart,
+  OrderDetails,
+  OrderSummary,
+  Product,
+  User,
+  AdminOrderDetails,
+  OrderStatus,
+} from './types';
 
 async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -19,100 +29,129 @@ async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
   const contentType = res.headers.get('content-type') ?? '';
   const isJson = contentType.includes('application/json');
 
-  const data = isJson ? ((await res.json()) as unknown) : await res.text().catch(() => '');
+  const data = isJson ? await res.json().catch(() => null) : await res.text().catch(() => null);
 
   if (!res.ok) {
-    if (isJson && data && typeof data === 'object') {
-      throw data as ApiError;
-    }
+    const maybeApiError = data as ApiError | null;
 
-    const message =
-      typeof data === 'string' && data.trim().length > 0
-        ? data.slice(0, 500)
-        : `HTTP ${res.status} ${res.statusText}`;
+    // Normalize into thrown Error with code/message on it.
+    const err = new Error(
+      maybeApiError?.error?.message ??
+        (typeof data === 'string' ? data : `Request failed (${res.status})`),
+    ) as Error & { code?: string; status?: number; details?: unknown };
 
-    const err: ApiError = { error: { code: 'HTTP_ERROR', message } };
+    err.status = res.status;
+    err.code = maybeApiError?.error?.code ?? 'UNKNOWN';
+    err.details = maybeApiError?.error?.details;
+
     throw err;
   }
 
   return data as T;
 }
 
-type CreateProductInput = {
-  sku: string;
-  name: string;
-  description?: string | null;
-  priceCents: number;
-  currency?: string;
-  isActive?: boolean;
-};
+type AuthInput = { email: string; password: string };
 
-type PatchProductInput = Partial<
-  Pick<Product, 'sku' | 'name' | 'description' | 'priceCents' | 'currency' | 'isActive'>
->;
-
-type OrderStatus = 'pending' | 'paid' | 'shipped' | 'completed' | 'cancelled';
+function normalizeAuthInput(a: string | AuthInput, b?: string): AuthInput {
+  if (typeof a === 'string') return { email: a, password: b ?? '' };
+  return a;
+}
 
 export const api = {
   auth: {
-    register: (email: string, password: string) =>
-      request<{ user: User }>('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      }),
-    login: (email: string, password: string) =>
-      request<{ user: User }>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      }),
-    logout: () => request<void>('/auth/logout', { method: 'POST' }),
+    // Backwards-compatible overload:
+    // - register({email,password})
+    // - register(email, password)
+    register: (a: AuthInput | string, b?: string) => {
+      const input = normalizeAuthInput(a, b);
+      return request<{ user: User }>('/auth/register', { method: 'POST', body: JSON.stringify(input) });
+    },
+
+    // Backwards-compatible overload:
+    // - login({email,password})
+    // - login(email, password)
+    login: (a: AuthInput | string, b?: string) => {
+      const input = normalizeAuthInput(a, b);
+      return request<{ user: User }>('/auth/login', { method: 'POST', body: JSON.stringify(input) });
+    },
+
     me: () => request<{ user: User }>('/auth/me'),
+
+    logout: () => request<void>('/auth/logout', { method: 'POST' }),
   },
 
   products: {
     list: () => request<{ products: Product[] }>('/products'),
-    get: (id: number) => request<{ product: Product }>(`/products/${id}`),
 
-    // admin-only
-    create: (input: CreateProductInput) =>
+    create: (input: { sku: string; name: string; priceCents: number; currency: string }) =>
       request<{ product: Product }>('/products', {
         method: 'POST',
         body: JSON.stringify(input),
       }),
 
-    // admin-only
-    patch: (id: number, patch: PatchProductInput) =>
+    // Existing behavior
+    deactivate: (id: number) =>
       request<{ product: Product }>(`/products/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify(patch),
+        body: JSON.stringify({ isActive: false }),
+      }),
+
+    // New: generic patch/update (needed by AdminProductsPage)
+    patch: (id: number, input: Partial<Pick<Product, 'name' | 'priceCents' | 'currency' | 'isActive' | 'sku' | 'description'>>) =>
+      request<{ product: Product }>(`/products/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
       }),
   },
 
   cart: {
     get: () => request<{ cart: Cart }>('/cart'),
-    upsertItem: (productId: number, quantity: number) =>
-      request<{ ok: true }>('/cart/items', {
+
+    add: (input: { productId: number; quantity: number }) =>
+      request<{ cart: Cart }>('/cart/items', { method: 'POST', body: JSON.stringify(input) }),
+
+    remove: (productId: number) =>
+      request<{ cart: Cart }>(`/cart/items/${productId}`, { method: 'DELETE' }),
+
+    // Backwards-compatible aliases used by older UI code
+    removeItem: (productId: number) =>
+      request<{ cart: Cart }>(`/cart/items/${productId}`, { method: 'DELETE' }),
+
+    // upsertItem(productId, qty)
+    // Assumption: POST /cart/items is an upsert (common).
+    upsertItem: (productId: number, quantity: number) => {
+      if (quantity <= 0) {
+        return request<{ cart: Cart }>(`/cart/items/${productId}`, { method: 'DELETE' });
+      }
+      return request<{ cart: Cart }>('/cart/items', {
         method: 'POST',
         body: JSON.stringify({ productId, quantity }),
-      }),
-    removeItem: (productId: number) =>
-      request<void>(`/cart/items/${productId}`, { method: 'DELETE' }),
+      });
+    },
   },
 
   orders: {
-    checkout: () => request<OrderDetails>('/orders', { method: 'POST' }),
-    listMine: () => request<{ orders: OrderSummary[] }>('/orders/me'),
+    checkout: () => request<OrderDetails>('/orders/checkout', { method: 'POST' }),
+
+    listMine: () => request<{ orders: OrderSummary[] }>('/orders'),
+
+    getMine: (id: number) => request<OrderDetails>(`/orders/${id}`),
+
+    // Backwards-compatible alias used by older UI code
     get: (id: number) => request<OrderDetails>(`/orders/${id}`),
   },
 
-  // admin
-  adminOrders: {
-    list: () => request<{ orders: OrderSummary[] }>('/admin/orders'),
-    get: (id: number) => request<OrderDetails>(`/admin/orders/${id}`),
-    setStatus: (id: number, status: OrderStatus) =>
-      request<{ order: OrderSummary }>(`/admin/orders/${id}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-      }),
+  admin: {
+    orders: {
+      list: () => request<{ orders: OrderSummary[] }>('/admin/orders'),
+
+      get: (id: number) => request<AdminOrderDetails>(`/admin/orders/${id}`),
+
+      updateStatus: (id: number, input: { status: OrderStatus; reason?: string }) =>
+        request<{ order: OrderSummary }>(`/admin/orders/${id}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify(input),
+        }),
+    },
   },
 };
