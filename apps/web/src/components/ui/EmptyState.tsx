@@ -1,21 +1,22 @@
-import type { ReactNode } from 'react';
+import { Card } from './Card';
 
 type EmptyStateProps = {
   title: string;
   description?: string;
-  action?: ReactNode;
+  action?: React.ReactNode;
+  className?: string;
 };
 
-export default function EmptyState({ title, description, action }: EmptyStateProps) {
+export function EmptyState({ title, description, action, className }: EmptyStateProps) {
   return (
-    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-4 text-center">
-      <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
-
-      {description ? (
-        <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
-      ) : null}
-
-      {action ? <div className="mt-2">{action}</div> : null}
-    </div>
+    <Card className={className ?? ''}>
+      <div className="p-6 text-center">
+        <div className="text-base font-semibold">{title}</div>
+        {description ? <div className="mt-1 text-sm opacity-70">{description}</div> : null}
+        {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
+      </div>
+    </Card>
   );
 }
+
+export default EmptyState;

@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api } from '../lib/api';
 import type { OrderSummary } from '../lib/types';
 import { extractErrorMessage } from '../lib/errors';
+
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
 
 function formatMoney(cents: number, currency: string) {
   return new Intl.NumberFormat('de-AT', { style: 'currency', currency }).format(cents / 100);
@@ -22,6 +26,7 @@ function formatDate(iso: string) {
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const totals = useMemo(() => {
     const count = orders.length;
@@ -32,106 +37,104 @@ export default function AdminOrdersPage() {
     return { count, byStatus };
   }, [orders]);
 
-  function loadOrders() {
+  const fetchOrders = useCallback(async () => {
+    setLoading(true);
     setError(null);
-    return api.admin.orders.list();
-  }
 
-  function reload() {
-    loadOrders()
-      .then((res) => {
-        // Defensive: falls API mal "null" oder falsches Shape liefert
-        const next = Array.isArray((res as any)?.orders) ? (res as any).orders : [];
-        setOrders(next);
-        if (!Array.isArray((res as any)?.orders)) {
-          setError('Unerwartete Server-Antwort (orders fehlt).');
-        }
-      })
-      .catch((err: unknown) => {
-        setError(extractErrorMessage(err));
-        setOrders([]); // damit UI stabil bleibt
-      });
-  }
+    try {
+      const res = await api.admin.orders.list();
 
-  useEffect(() => {
-    loadOrders()
-      .then((res) => {
-        const next = Array.isArray((res as any)?.orders) ? (res as any).orders : [];
-        setOrders(next);
-        if (!Array.isArray((res as any)?.orders)) {
-          setError('Unerwartete Server-Antwort (orders fehlt).');
-        }
-      })
-      .catch((err: unknown) => {
-        setError(extractErrorMessage(err));
-        setOrders([]);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      const next = Array.isArray((res as any)?.orders) ? ((res as any).orders as OrderSummary[]) : [];
+      setOrders(next);
+
+      if (!Array.isArray((res as any)?.orders)) {
+        setError('Unerwartete Server-Antwort (orders fehlt).');
+      }
+    } catch (err: unknown) {
+      setOrders([]);
+      setError(extractErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  return (
-    <div style={{ padding: 16 }}>
-      <h2>Admin – Orders</h2>
+  useEffect(() => {
+    void fetchOrders();
+  }, [fetchOrders]);
 
-      <div style={{ margin: '12px 0', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <button onClick={reload}>Reload</button>
-        <div>
-          <strong>Total:</strong> {totals.count}
-        </div>
-        <div>
-          <strong>Pending:</strong> {totals.byStatus.pending ?? 0}
-        </div>
-        <div>
-          <strong>Paid:</strong> {totals.byStatus.paid ?? 0}
-        </div>
-        <div>
-          <strong>Shipped:</strong> {totals.byStatus.shipped ?? 0}
-        </div>
-        <div>
-          <strong>Completed:</strong> {totals.byStatus.completed ?? 0}
-        </div>
-        <div>
-          <strong>Cancelled:</strong> {totals.byStatus.cancelled ?? 0}
-        </div>
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold">Admin – Orders</h2>
+        <Button onClick={fetchOrders} disabled={loading}>
+          {loading ? 'Loading…' : 'Reload'}
+        </Button>
       </div>
 
-      {error && <div style={{ color: 'crimson', marginBottom: 12 }}>{error}</div>}
+      <Card className="p-4">
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <div>
+            <span className="font-semibold">Total:</span> {totals.count}
+          </div>
+          <div>
+            <span className="font-semibold">Pending:</span> {totals.byStatus.pending ?? 0}
+          </div>
+          <div>
+            <span className="font-semibold">Paid:</span> {totals.byStatus.paid ?? 0}
+          </div>
+          <div>
+            <span className="font-semibold">Shipped:</span> {totals.byStatus.shipped ?? 0}
+          </div>
+          <div>
+            <span className="font-semibold">Completed:</span> {totals.byStatus.completed ?? 0}
+          </div>
+          <div>
+            <span className="font-semibold">Cancelled:</span> {totals.byStatus.cancelled ?? 0}
+          </div>
+        </div>
+      </Card>
 
-      {orders.length === 0 ? (
-        <div>Keine Orders.</div>
+      {error && (
+        <Card className="p-4">
+          <div className="text-sm text-red-600">{error}</div>
+        </Card>
+      )}
+
+      {!loading && orders.length === 0 ? (
+        <EmptyState title="Keine Orders" description="Es wurden noch keine Bestellungen gefunden." />
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ textAlign: 'left' }}>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>ID</th>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Status</th>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Subtotal</th>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Created</th>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Updated</th>
-              <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o) => (
-              <tr key={o.id}>
-                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{o.id}</td>
-                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{o.status}</td>
-                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
-                  {formatMoney(o.subtotalCents, o.currency)}
-                </td>
-                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
-                  {formatDate(o.createdAt)}
-                </td>
-                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
-                  {formatDate(o.updatedAt)}
-                </td>
-                <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
-                  <Link to={`/admin/orders/${o.id}`}>Open</Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Card className="overflow-hidden p-0">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="text-left">
+                  <th className="border-b p-3">ID</th>
+                  <th className="border-b p-3">Status</th>
+                  <th className="border-b p-3">Subtotal</th>
+                  <th className="border-b p-3">Created</th>
+                  <th className="border-b p-3">Updated</th>
+                  <th className="border-b p-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr key={o.id} className="hover:bg-black/5">
+                    <td className="border-b p-3">{o.id}</td>
+                    <td className="border-b p-3">{o.status}</td>
+                    <td className="border-b p-3">{formatMoney(o.subtotalCents, o.currency)}</td>
+                    <td className="border-b p-3">{formatDate(o.createdAt)}</td>
+                    <td className="border-b p-3">{formatDate(o.updatedAt)}</td>
+                    <td className="border-b p-3">
+                      <Link className="underline" to={`/admin/orders/${o.id}`}>
+                        Open
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   );

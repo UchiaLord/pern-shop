@@ -64,8 +64,14 @@ adminOrdersRouter.patch(
 
     // requireRole setzt voraus: req.session.user existiert und enthält id + role
     const actorUserId = req.session?.user?.id;
+    if (!actorUserId) return res.status(401).json({ error: 'UNAUTHENTICATED' });
 
-    const updated = await updateOrderStatusAdmin(id, status, actorUserId, reason);
+    const updated = await updateOrderStatusAdmin(
+      id,
+      status,
+      actorUserId,
+      reason,
+    );
     res.status(200).json({ order: updated });
   }),
 );

@@ -64,7 +64,10 @@ export const api = {
     // - register(email, password)
     register: (a: AuthInput | string, b?: string) => {
       const input = normalizeAuthInput(a, b);
-      return request<{ user: User }>('/auth/register', { method: 'POST', body: JSON.stringify(input) });
+      return request<{ user: User }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
     },
 
     // Backwards-compatible overload:
@@ -72,7 +75,10 @@ export const api = {
     // - login(email, password)
     login: (a: AuthInput | string, b?: string) => {
       const input = normalizeAuthInput(a, b);
-      return request<{ user: User }>('/auth/login', { method: 'POST', body: JSON.stringify(input) });
+      return request<{ user: User }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
     },
 
     me: () => request<{ user: User }>('/auth/me'),
@@ -97,7 +103,12 @@ export const api = {
       }),
 
     // New: generic patch/update (needed by AdminProductsPage)
-    patch: (id: number, input: Partial<Pick<Product, 'name' | 'priceCents' | 'currency' | 'isActive' | 'sku' | 'description'>>) =>
+    patch: (
+      id: number,
+      input: Partial<
+        Pick<Product, 'name' | 'priceCents' | 'currency' | 'isActive' | 'sku' | 'description'>
+      >,
+    ) =>
       request<{ product: Product }>(`/products/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(input),
@@ -131,10 +142,13 @@ export const api = {
   },
 
   orders: {
-    checkout: () => request<OrderDetails>('/orders/checkout', { method: 'POST' }),
+    // Backend: POST /orders (Checkout)
+    checkout: () => request<OrderDetails>('/orders', { method: 'POST' }),
 
-    listMine: () => request<{ orders: OrderSummary[] }>('/orders'),
+    // Backend: GET /orders/me
+    listMine: () => request<{ orders: OrderSummary[] }>('/orders/me'),
 
+    // Backend: GET /orders/:id
     getMine: (id: number) => request<OrderDetails>(`/orders/${id}`),
 
     // Backwards-compatible alias used by older UI code
