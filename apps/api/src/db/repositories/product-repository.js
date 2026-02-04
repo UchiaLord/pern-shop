@@ -1,3 +1,4 @@
+// apps/api/src/db/repositories/product-repository.js
 import { pool } from '../pool.js';
 
 function mapRow(row) {
@@ -14,7 +15,14 @@ function mapRow(row) {
   };
 }
 
-export async function createProduct({ sku, name, description, priceCents, currency = 'EUR', isActive = true }) {
+export async function createProduct({
+  sku,
+  name,
+  description,
+  priceCents,
+  currency = 'EUR',
+  isActive = true,
+}) {
   const { rows } = await pool.query(
     `
     INSERT INTO products (sku, name, description, price_cents, currency, is_active)
@@ -27,6 +35,9 @@ export async function createProduct({ sku, name, description, priceCents, curren
   return mapRow(rows[0]);
 }
 
+/**
+ * Public listing: nur aktive Produkte.
+ */
 export async function listActiveProducts() {
   const { rows } = await pool.query(
     `
@@ -39,8 +50,21 @@ export async function listActiveProducts() {
   return rows.map(mapRow);
 }
 
+/**
+ * Admin listing: alle Produkte (active + inactive).
+ */
+export async function listAllProducts() {
+  const { rows } = await pool.query(
+    `
+    SELECT *
+    FROM products
+    ORDER BY id ASC
+    `,
+  );
+  return rows.map(mapRow);
+}
+
 export async function updateProductById(id, patch) {
-  // Whitelist + dynamisches SET (nur erlaubte Felder)
   const sets = [];
   const values = [];
   let i = 1;
@@ -71,7 +95,6 @@ export async function updateProductById(id, patch) {
   }
 
   if (sets.length === 0) {
-    // Kein Patch-Feld -> dann "aktuelles Produkt" liefern (oder 400, je nach gewünschtem Contract)
     const { rows } = await pool.query(`SELECT * FROM products WHERE id = $1`, [id]);
     return rows[0] ? mapRow(rows[0]) : null;
   }

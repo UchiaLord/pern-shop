@@ -26,6 +26,7 @@ import { productsRouter } from './routes/products.js';
 import { cartRouter } from './routes/cart.js';
 import { ordersRouter } from './routes/orders.js';
 import { adminOrdersRouter } from './routes/admin-orders.js';
+import { adminProductsRouter } from './routes/admin-products.js';
 
 /**
  * Factory zur Erstellung einer Express-App.
@@ -69,8 +70,9 @@ export function createApp() {
   app.use('/cart', cartRouter);
   app.use('/orders', ordersRouter);
 
-  // Admin (read-only)
+  // Admin
   app.use('/admin/orders', adminOrdersRouter);
+  app.use('/admin/products', adminProductsRouter);
 
   /**
    * Test-only Route für RBAC.
@@ -86,7 +88,7 @@ export function createApp() {
 
       if (!req.session?.user) {
         return res.status(401).json({
-          error: { code: 'UNAUTHENTICATED', message: 'Nicht eingeloggt.' }
+          error: { code: 'UNAUTHENTICATED', message: 'Nicht eingeloggt.' },
         });
       }
 
@@ -103,12 +105,12 @@ export function createApp() {
     '/echo',
     validate({
       body: z.object({
-        message: z.string().min(1)
-      })
+        message: z.string().min(1),
+      }),
     }),
     (req, res) => {
       res.status(200).json({ message: req.body.message });
-    }
+    },
   );
 
   // 404 Fallback (muss NACH allen Routen kommen)

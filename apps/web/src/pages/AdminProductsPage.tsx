@@ -1,4 +1,6 @@
+// apps/web/src/pages/AdminProductsPage.tsx
 import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import { motion } from 'framer-motion';
 
 import { api } from '../lib/api';
@@ -34,10 +36,15 @@ function normalizeCurrency(input: string): string {
   return c || 'EUR';
 }
 
-function parseNonNegativeInt(value: string): { ok: true; value: number } | { ok: false; message: string } {
+function parseNonNegativeInt(
+  value: string,
+): { ok: true; value: number } | { ok: false; message: string } {
   const raw = value.trim();
+
   if (raw.length === 0) return { ok: false, message: 'priceCents ist erforderlich.' };
-  if (!/^\d+$/.test(raw)) return { ok: false, message: 'priceCents muss eine nicht-negative ganze Zahl sein.' };
+  if (!/^\d+$/.test(raw)) {
+    return { ok: false, message: 'priceCents muss eine nicht-negative ganze Zahl sein.' };
+  }
 
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
@@ -82,7 +89,8 @@ export default function AdminProductsPage() {
     setIsLoading(true);
     setPageError(null);
     try {
-      const res = await api.products.list();
+      // Admin: alle Produkte (inkl. inactive)
+      const res = await api.admin.products.list();
       setProducts(res.products);
     } catch (err: unknown) {
       setPageError(extractErrorMessage(err));
@@ -95,7 +103,7 @@ export default function AdminProductsPage() {
     void loadProducts();
   }, []);
 
-  async function onCreate(e: React.FormEvent) {
+  async function onCreate(e: FormEvent) {
     e.preventDefault();
     if (isSubmitting) return;
 
@@ -136,7 +144,8 @@ export default function AdminProductsPage() {
         isActive: form.isActive,
       };
 
-      const res = await api.products.create(payload);
+      // Admin create (POST /products, role-protected)
+      const res = await api.admin.products.create(payload);
       setProducts((prev) => [res.product, ...prev]);
       setForm(initialForm);
     } catch (err: unknown) {
@@ -154,14 +163,16 @@ export default function AdminProductsPage() {
 
     const nextActive = !current.isActive;
 
+    // Optimistic UI
     setProducts((prev) => prev.map((p) => (p.id === productId ? { ...p, isActive: nextActive } : p)));
     setIsToggling((prev) => ({ ...prev, [productId]: true }));
     setPageError(null);
 
     try {
-      const res = await api.products.patch(productId, { isActive: nextActive });
+      const res = await api.admin.products.patch(productId, { isActive: nextActive });
       setProducts((prev) => prev.map((p) => (p.id === productId ? res.product : p)));
     } catch (err: unknown) {
+      // rollback + re-sync
       setProducts((prev) => prev.map((p) => (p.id === productId ? current : p)));
       setPageError(extractErrorMessage(err));
       await loadProducts();
@@ -176,7 +187,6 @@ export default function AdminProductsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-xs tracking-widest text-[rgb(var(--muted))]">ADMIN</div>
@@ -196,7 +206,6 @@ export default function AdminProductsPage() {
       {pageError ? <ErrorBanner message={pageError} /> : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Create */}
         <div className="lg:col-span-1">
           <Card>
             <CardHeader>
@@ -208,12 +217,18 @@ export default function AdminProductsPage() {
               <form onSubmit={(e) => void onCreate(e)} className="space-y-3">
                 <div className="space-y-1">
                   <div className="text-xs text-[rgb(var(--muted))]">SKU</div>
-                  <Input value={form.sku} onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))} />
+                  <Input
+                    value={form.sku}
+                    onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                  />
                 </div>
 
                 <div className="space-y-1">
                   <div className="text-xs text-[rgb(var(--muted))]">Name</div>
-                  <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+                  <Input
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  />
                 </div>
 
                 <div className="space-y-1">
@@ -231,17 +246,23 @@ export default function AdminProductsPage() {
                   <div className="space-y-1">
                     <div className="text-xs text-[rgb(var(--muted))]">Price (cents)</div>
                     <Input
+                      type="text"
+                      name="priceCents"
                       value={form.priceCents}
                       onChange={(e) => setForm((f) => ({ ...f, priceCents: e.target.value }))}
                       inputMode="numeric"
-                      pattern="^\\d+$"
-                      placeholder="e.g. 1999"
+                      pattern="^[0-9]+$"
+                      placeholder="z.B. 2000"
+                      required
                     />
                   </div>
 
                   <div className="space-y-1">
                     <div className="text-xs text-[rgb(var(--muted))]">Currency</div>
-                    <Input value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))} />
+                    <Input
+                      value={form.currency}
+                      onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
+                    />
                   </div>
                 </div>
 
@@ -263,11 +284,12 @@ export default function AdminProductsPage() {
           </Card>
         </div>
 
-        {/* List */}
         <div className="lg:col-span-2">
           {isLoading ? <Loading /> : null}
 
-          {!isLoading && !pageError && sortedProducts.length === 0 ? <EmptyState message="Keine Produkte." /> : null}
+          {!isLoading && !pageError && sortedProducts.length === 0 ? (
+            <EmptyState message="Keine Produkte." />
+          ) : null}
 
           {!isLoading && sortedProducts.length > 0 ? (
             <motion.div
@@ -292,7 +314,9 @@ export default function AdminProductsPage() {
                             <div className="truncate">
                               <span className="text-[rgb(var(--muted))]">{p.sku}</span> — {p.name}
                             </div>
-                            <div className="mt-1 text-sm text-[rgb(var(--muted))]">{formatCents(p.priceCents, p.currency)}</div>
+                            <div className="mt-1 text-sm text-[rgb(var(--muted))]">
+                              {formatCents(p.priceCents, p.currency)}
+                            </div>
                           </div>
 
                           <StatusChip active={p.isActive} />
@@ -307,7 +331,11 @@ export default function AdminProductsPage() {
                         )}
 
                         <div className="flex items-center justify-end">
-                          <Button variant={p.isActive ? 'danger' : 'primary'} disabled={pending} onClick={() => void toggleActive(p.id)}>
+                          <Button
+                            variant={p.isActive ? 'danger' : 'primary'}
+                            disabled={pending}
+                            onClick={() => void toggleActive(p.id)}
+                          >
                             {pending ? 'Saving…' : p.isActive ? 'Deactivate' : 'Activate'}
                           </Button>
                         </div>
