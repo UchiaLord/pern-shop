@@ -27,15 +27,6 @@ export type Product = {
   updatedAt: string;
 };
 
-export type CartItem = {
-  productId: number;
-  quantity: number;
-};
-
-export type Cart = {
-  items: CartItem[];
-};
-
 export type OrderStatus = 'pending' | 'paid' | 'shipped' | 'completed' | 'cancelled';
 
 export type OrderSummary = {
@@ -83,4 +74,34 @@ export type AdminOrder = OrderSummary & {
 export type AdminOrderDetails = {
   order: AdminOrder;
   items: OrderItem[];
+};
+
+/**
+ * Cart typing
+ *
+ * Backend liefert typischerweise ein "enriched" Cart:
+ * - cart.subtotalCents + cart.currency
+ * - items enthalten name/unitPrice/lineTotal/currency
+ *
+ * Für Robustheit sind die Enrichment-Felder optional,
+ * damit Code auch mit minimaleren Shapes umgehen kann.
+ */
+export type CartItem = {
+  productId: number;
+  quantity: number;
+
+  // enriched (optional)
+  sku?: string;
+  name?: string;
+  unitPriceCents?: number;
+  lineTotalCents?: number;
+  currency?: string;
+};
+
+export type Cart = {
+  items: CartItem[];
+
+  // enriched (optional)
+  subtotalCents?: number;
+  currency?: string;
 };

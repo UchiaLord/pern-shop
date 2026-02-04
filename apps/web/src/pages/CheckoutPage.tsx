@@ -63,25 +63,15 @@ export default function CheckoutPage() {
     }));
   }, [cart, products]);
 
-  const computedSubtotalCents = useMemo(() => {
+  const subtotalCents = useMemo(() => {
     return enriched.reduce((acc, it) => acc + calcLineTotalCents(it), 0);
   }, [enriched]);
 
   const currency = useMemo(() => {
-    // Prefer cart.currency if present, else infer from first known product, else EUR
-    const fromCart = cart?.currency;
-    if (fromCart && fromCart.trim().length === 3) return fromCart;
-
+    // Best-effort: take currency from first known product, fallback EUR
     const first = enriched.find((it) => it.product?.currency)?.product?.currency;
     return first ?? 'EUR';
-  }, [cart?.currency, enriched]);
-
-  const subtotalCents = useMemo(() => {
-    // Prefer cart.subtotalCents if present, else computed
-    const fromCart = cart?.subtotalCents;
-    if (typeof fromCart === 'number' && Number.isFinite(fromCart)) return fromCart;
-    return computedSubtotalCents;
-  }, [cart?.subtotalCents, computedSubtotalCents]);
+  }, [enriched]);
 
   const isEmpty = !loading && !error && (cart?.items?.length ?? 0) === 0;
 
