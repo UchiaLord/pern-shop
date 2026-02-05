@@ -11,6 +11,8 @@
     "check": "pnpm -C apps/api run test && pnpm -C apps/web run build && pnpm run lint"
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "^5.6.0",
+    "@stripe/stripe-js": "^8.7.0",
     "framer-motion": "^12.29.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

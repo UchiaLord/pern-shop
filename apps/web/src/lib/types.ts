@@ -1,5 +1,4 @@
 // apps/web/src/lib/types.ts
-
 export type ApiError = {
   error: {
     code: string;
@@ -77,31 +76,37 @@ export type AdminOrderDetails = {
 };
 
 /**
- * Cart typing
+ * Cart typing (GET /cart)
  *
- * Backend liefert typischerweise ein "enriched" Cart:
- * - cart.subtotalCents + cart.currency
- * - items enthalten name/unitPrice/lineTotal/currency
+ * Backend liefert enriched Cart:
+ * cart: {
+ *   items: [{ productId, sku, name, currency, unitPriceCents, quantity, lineTotalCents }],
+ *   subtotalCents,
+ *   currency
+ * }
  *
- * Für Robustheit sind die Enrichment-Felder optional,
- * damit Code auch mit minimaleren Shapes umgehen kann.
+ * => Diese Felder sind im Frontend REQUIRED, damit Pages wie Cart/Checkout ohne Optional-Chains stabil sind.
  */
 export type CartItem = {
   productId: number;
+  sku: string;
+  name: string;
+  currency: string;
+  unitPriceCents: number;
   quantity: number;
-
-  // enriched (optional)
-  sku?: string;
-  name?: string;
-  unitPriceCents?: number;
-  lineTotalCents?: number;
-  currency?: string;
+  lineTotalCents: number;
 };
 
 export type Cart = {
   items: CartItem[];
+  subtotalCents: number;
+  currency: string;
+};
 
-  // enriched (optional)
-  subtotalCents?: number;
-  currency?: string;
+/**
+ * Payments (Stripe)
+ */
+export type CreatePaymentIntentResponse = {
+  orderId: number;
+  clientSecret: string;
 };

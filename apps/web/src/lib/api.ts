@@ -1,13 +1,13 @@
 // apps/web/src/lib/api.ts
 import type {
+  AdminOrderDetails,
   ApiError,
   Cart,
   OrderDetails,
+  OrderStatus,
   OrderSummary,
   Product,
   User,
-  AdminOrderDetails,
-  OrderStatus,
 } from './types';
 
 async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
@@ -83,6 +83,9 @@ export const api = {
     // Public: active only
     list: () => request<{ products: Product[] }>('/products'),
 
+    // Public: product details (active only)
+    get: (id: number) => request<{ product: Product }>(`/products/${id}`),
+
     // Admin-only (same route, role protected)
     create: (input: {
       sku: string;
@@ -150,6 +153,14 @@ export const api = {
     get: (id: number) => request<OrderDetails>(`/orders/${id}`),
   },
 
+  payments: {
+    /**
+     * POST /payments/create-intent
+     * returns: { orderId, clientSecret }
+     */
+    createIntent: () => request<{ orderId: number; clientSecret: string }>('/payments/create-intent', { method: 'POST' }),
+  },
+
   admin: {
     orders: {
       list: () => request<{ orders: OrderSummary[] }>('/admin/orders'),
@@ -164,7 +175,7 @@ export const api = {
     },
 
     products: {
-      // Admin list: includes inactive (backend test indicates /admin/products exists)
+      // Admin list: includes inactive
       list: () => request<{ products: Product[] }>('/admin/products'),
 
       // Create/patch are on /products with requireRole('admin')
