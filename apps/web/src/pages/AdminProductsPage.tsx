@@ -152,8 +152,12 @@ export default function AdminProductsPage() {
     try {
       // Admin: alle Produkte (damit inactive sichtbar bleibt)
       const res = await api.admin.products.list();
-      setProducts(res.products);
+
+      // Hardening: falls Proxy/Backend mal HTML oder falsches JSON liefert
+      const list = (res as unknown as { products?: unknown }).products;
+      setProducts(Array.isArray(list) ? (list as Product[]) : []);
     } catch (err: unknown) {
+      setProducts([]);
       setPageError(extractErrorMessage(err));
     } finally {
       setIsLoading(false);
@@ -223,7 +227,6 @@ export default function AdminProductsPage() {
     const optimistic: Product = {
       ...original,
       ...patch,
-      // description könnte undefined im patch sein; dann bleibt original
       description: patch.description !== undefined ? patch.description : original.description,
       priceCents: patch.priceCents !== undefined ? patch.priceCents : original.priceCents,
       currency: patch.currency !== undefined ? patch.currency : original.currency,
@@ -579,18 +582,11 @@ export default function AdminProductsPage() {
                               </div>
 
                               <div className="flex items-center gap-2">
-                                <Button
-                                  variant="ghost"
-                                  onClick={cancelEdit}
-                                  disabled={savingEdit}
-                                >
+                                <Button variant="ghost" onClick={cancelEdit} disabled={savingEdit}>
                                   Cancel
                                 </Button>
 
-                                <Button
-                                  onClick={() => void saveEdit(p.id)}
-                                  disabled={savingEdit}
-                                >
+                                <Button onClick={() => void saveEdit(p.id)} disabled={savingEdit}>
                                   {savingEdit ? 'Saving…' : 'Save'}
                                 </Button>
                               </div>
