@@ -23,6 +23,40 @@ function assertTransition(current, next) {
 }
 
 /**
+ * Day 31 helper:
+ * Allow payments/create-intent to reuse a previously created pending order
+ * for the same user, if it already has a PaymentIntent attached.
+ */
+export async function getOrderForPaymentReuseByUser(userId, orderId) {
+  const res = await pool.query(
+    `
+    SELECT id, user_id, status, currency, subtotal_cents, payment_intent_id,
+           created_at, updated_at, paid_at, shipped_at, completed_at
+    FROM orders
+    WHERE id = $1 AND user_id = $2
+    `,
+    [Number(orderId), Number(userId)],
+  );
+
+  if (res.rowCount === 0) return null;
+
+  const o = res.rows[0];
+  return {
+    id: Number(o.id),
+    userId: Number(o.user_id),
+    status: o.status,
+    currency: o.currency,
+    subtotalCents: Number(o.subtotal_cents),
+    paymentIntentId: o.payment_intent_id ?? null,
+    createdAt: o.created_at,
+    updatedAt: o.updated_at,
+    paidAt: o.paid_at,
+    shippedAt: o.shipped_at,
+    completedAt: o.completed_at,
+  };
+}
+
+/**
  * Erstellt Order aus Cart Items und friert Preise ein.
  * items: [{ productId, quantity }]
  */
@@ -574,6 +608,12 @@ export async function markOrderPaidByWebhook(orderId, paymentIntentId) {
       return;
     }
 
+    // If cancelled, do not resurrect it
+    if (currentStatus === 'cancelled') {
+      await client.query('COMMIT');
+      return;
+    }
+
     // Only pending -> paid is allowed
     assertTransition(currentStatus, 'paid');
 
@@ -589,6 +629,121 @@ export async function markOrderPaidByWebhook(orderId, paymentIntentId) {
           WHEN paid_at IS NULL THEN NOW()
           ELSE paid_at
         END
+      WHERE id = $1
+      `,
+      [Number(orderId), pi],
+    );
+
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Day 31: Stripe webhook helper for failures/cancellations.
+ * We keep MVP semantics: set status to 'cancelled' (no new status enum introduced).
+ * Idempotent: if already cancelled or progressed beyond cancellation rules, it won't break.
+ */
+export async function markOrderCancelledByWebhook(orderId, paymentIntentId, meta = {}) {
+  const pi = String(paymentIntentId ?? '').trim();
+  if (!pi) {
+    throw new HttpError({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      message: 'paymentIntentId fehlt.',
+    });
+  }
+
+  // Day 31 MVP: use meta for structured logs so ESLint doesn't complain (and it's useful).
+
+  console.log(
+    JSON.stringify(
+      {
+        ts: new Date().toISOString(),
+        source: 'order-repository',
+        action: 'markOrderCancelledByWebhook',
+        orderId: Number(orderId),
+        paymentIntentId: pi,
+        meta,
+      },
+      null,
+      0,
+    ),
+  );
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const curRes = await client.query(
+      `
+      SELECT id, status, payment_intent_id
+      FROM orders
+      WHERE id = $1
+      FOR UPDATE
+      `,
+      [Number(orderId)],
+    );
+
+    if (curRes.rowCount === 0) {
+      throw new HttpError({
+        status: 404,
+        code: 'ORDER_NOT_FOUND',
+        message: 'Order existiert nicht.',
+      });
+    }
+
+    const cur = curRes.rows[0];
+    const currentStatus = cur.status;
+    const existingPi = cur.payment_intent_id ?? null;
+
+    // If a different PI is already attached -> conflict
+    if (existingPi && existingPi !== pi) {
+      throw new HttpError({
+        status: 409,
+        code: 'PAYMENT_INTENT_CONFLICT',
+        message: 'Order hat bereits eine andere PaymentIntent ID.',
+      });
+    }
+
+    // If already cancelled -> idempotent OK
+    if (currentStatus === 'cancelled') {
+      if (!existingPi) {
+        await client.query(
+          `
+          UPDATE orders
+          SET
+            payment_intent_id = $2,
+            updated_at = NOW()
+          WHERE id = $1
+          `,
+          [Number(orderId), pi],
+        );
+      }
+      await client.query('COMMIT');
+      return;
+    }
+
+    // Do not cancel completed orders
+    if (currentStatus === 'completed') {
+      await client.query('COMMIT');
+      return;
+    }
+
+    // Ensure transition is allowed (pending->cancelled, paid->cancelled)
+    assertTransition(currentStatus, 'cancelled');
+
+    await client.query(
+      `
+      UPDATE orders
+      SET
+        status = 'cancelled',
+        payment_intent_id = COALESCE(payment_intent_id, $2),
+        updated_at = NOW()
       WHERE id = $1
       `,
       [Number(orderId), pi],

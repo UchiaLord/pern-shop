@@ -4,7 +4,10 @@ import Stripe from 'stripe';
 
 import { HttpError } from '../errors/http-error.js';
 import { asyncHandler } from '../utils/async-handler.js';
-import { markOrderPaidByWebhook } from '../db/repositories/order-repository.js';
+import {
+  markOrderPaidByWebhook,
+  markOrderCancelledByWebhook,
+} from '../db/repositories/order-repository.js';
 
 export const stripeWebhooksRouter = express.Router();
 
@@ -32,6 +35,22 @@ function getWebhookSecret() {
   return whsec;
 }
 
+function logWebhook(info) {
+  // Structured logging (Day 31 MVP: no DB migration)
+ 
+  console.log(
+    JSON.stringify(
+      {
+        ts: new Date().toISOString(),
+        source: 'stripe-webhook',
+        ...info,
+      },
+      null,
+      0,
+    ),
+  );
+}
+
 /**
  * POST /webhooks/stripe
  * WICHTIG:
@@ -57,6 +76,11 @@ stripeWebhooksRouter.post(
     try {
       event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (e) {
+      logWebhook({
+        ok: false,
+        stage: 'constructEvent',
+        error: e?.message ?? String(e),
+      });
       throw new HttpError({
         status: 400,
         code: 'STRIPE_SIGNATURE_INVALID',
@@ -65,12 +89,31 @@ stripeWebhooksRouter.post(
       });
     }
 
-    if (event.type === 'payment_intent.succeeded') {
-      const pi = event.data?.object;
-      const paymentIntentId = pi?.id;
-      const orderIdRaw = pi?.metadata?.orderId;
+    const type = event?.type ?? 'unknown';
+    const eventId = event?.id ?? null;
 
-      const orderId = Number(orderIdRaw);
+    // For PaymentIntent events, Stripe sends the PI object as data.object
+    const obj = event?.data?.object ?? null;
+    const paymentIntentId = obj?.id ?? null;
+    const orderIdRaw = obj?.metadata?.orderId ?? null;
+    const orderId = Number(orderIdRaw);
+
+    logWebhook({
+      ok: true,
+      stage: 'received',
+      eventId,
+      type,
+      paymentIntentId,
+      orderId: Number.isFinite(orderId) ? orderId : null,
+    });
+
+    // Only handle PaymentIntent-based events we care about
+    const isHandledType =
+      type === 'payment_intent.succeeded' ||
+      type === 'payment_intent.payment_failed' ||
+      type === 'payment_intent.canceled';
+
+    if (isHandledType) {
       if (!Number.isFinite(orderId) || orderId <= 0) {
         throw new HttpError({
           status: 400,
@@ -85,10 +128,66 @@ stripeWebhooksRouter.post(
           message: 'PaymentIntent id fehlt im Event.',
         });
       }
-
-      await markOrderPaidByWebhook(orderId, paymentIntentId);
     }
 
+    if (type === 'payment_intent.succeeded') {
+      await markOrderPaidByWebhook(orderId, paymentIntentId);
+
+      logWebhook({
+        ok: true,
+        stage: 'processed',
+        eventId,
+        type,
+        paymentIntentId,
+        orderId,
+        result: 'marked_paid',
+      });
+    }
+
+    if (type === 'payment_intent.payment_failed') {
+      const reason =
+        obj?.last_payment_error?.message ??
+        obj?.last_payment_error?.code ??
+        'payment_failed';
+
+      await markOrderCancelledByWebhook(orderId, paymentIntentId, {
+        reason: String(reason),
+        source: 'payment_intent.payment_failed',
+      });
+
+      logWebhook({
+        ok: true,
+        stage: 'processed',
+        eventId,
+        type,
+        paymentIntentId,
+        orderId,
+        result: 'marked_cancelled',
+        reason: String(reason),
+      });
+    }
+
+    if (type === 'payment_intent.canceled') {
+      const reason = obj?.cancellation_reason ?? 'canceled';
+
+      await markOrderCancelledByWebhook(orderId, paymentIntentId, {
+        reason: String(reason),
+        source: 'payment_intent.canceled',
+      });
+
+      logWebhook({
+        ok: true,
+        stage: 'processed',
+        eventId,
+        type,
+        paymentIntentId,
+        orderId,
+        result: 'marked_cancelled',
+        reason: String(reason),
+      });
+    }
+
+    // Always return 200 to Stripe if we handled/ignored successfully.
     res.status(200).json({ received: true });
   }),
 );
