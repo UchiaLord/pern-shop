@@ -22,6 +22,36 @@ function assertTransition(current, next) {
   }
 }
 
+async function createOrderStatusEvent(client, { orderId, fromStatus, toStatus, reason, source, metadata }) {
+  await client.query(
+    `
+    INSERT INTO order_status_events (order_id, from_status, to_status, reason, source, metadata)
+    VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+    `,
+    [
+      Number(orderId),
+      fromStatus ?? null,
+      String(toStatus),
+      reason ?? null,
+      String(source),
+      JSON.stringify(metadata ?? {}),
+    ],
+  );
+}
+
+function mapEventRow(r) {
+  return {
+    id: Number(r.id),
+    orderId: Number(r.order_id),
+    fromStatus: r.from_status ?? null,
+    toStatus: r.to_status,
+    reason: r.reason ?? null,
+    source: r.source,
+    metadata: r.metadata ?? {},
+    createdAt: r.created_at,
+  };
+}
+
 /**
  * Day 31 helper:
  * Allow payments/create-intent to reuse a previously created pending order
@@ -54,6 +84,57 @@ export async function getOrderForPaymentReuseByUser(userId, orderId) {
     shippedAt: o.shipped_at,
     completedAt: o.completed_at,
   };
+}
+
+/**
+ * Day 32:
+ * Admin timeline (order exists check).
+ */
+export async function listOrderStatusEventsAdmin(orderId) {
+  const exists = await pool.query(`SELECT id FROM orders WHERE id = $1`, [Number(orderId)]);
+  if (exists.rowCount === 0) {
+    throw new HttpError({
+      status: 404,
+      code: 'ORDER_NOT_FOUND',
+      message: 'Order existiert nicht.',
+    });
+  }
+
+  const res = await pool.query(
+    `
+    SELECT id, order_id, from_status, to_status, reason, source, metadata, created_at
+    FROM order_status_events
+    WHERE order_id = $1
+    ORDER BY created_at ASC, id ASC
+    `,
+    [Number(orderId)],
+  );
+
+  return res.rows.map(mapEventRow);
+}
+
+/**
+ * Day 32:
+ * User timeline (returns null if not owner or not found).
+ */
+export async function listOrderStatusEventsForUser(userId, orderId) {
+  const owns = await pool.query(
+    `SELECT id FROM orders WHERE id = $1 AND user_id = $2`,
+    [Number(orderId), Number(userId)],
+  );
+  if (owns.rowCount === 0) return null;
+
+  const res = await pool.query(
+    `
+    SELECT id, order_id, from_status, to_status, reason, source, metadata, created_at
+    FROM order_status_events
+    WHERE order_id = $1
+    ORDER BY created_at ASC, id ASC
+    `,
+    [Number(orderId)],
+  );
+
+  return res.rows.map(mapEventRow);
 }
 
 /**
@@ -165,6 +246,20 @@ export async function createOrderFromCart(userId, items) {
       createdItems.push(itemRes.rows[0]);
     }
 
+    // Day 32: initial status event (system)
+    await createOrderStatusEvent(client, {
+      orderId: Number(order.id),
+      fromStatus: null,
+      toStatus: 'pending',
+      reason: 'checkout',
+      source: 'system',
+      metadata: {
+        itemsCount: items.length,
+        subtotalCents,
+        currency: currency ?? 'EUR',
+      },
+    });
+
     await client.query('COMMIT');
 
     return {
@@ -252,7 +347,6 @@ export async function attachPaymentIntentToOrder(orderId, paymentIntentId) {
           [Number(orderId), String(paymentIntentId)],
         );
       } catch (e) {
-        // unique violation or other constraint -> report as conflict
         throw new HttpError({
           status: 409,
           code: 'PAYMENT_INTENT_CONFLICT',
@@ -302,7 +396,7 @@ export async function listOrdersByUser(userId) {
 
 /**
  * User: Details einer Order (nur wenn owner)
- * @returns {null | {order: {...}, items: [...]} }
+ * @returns {null | {order: {...}, items: [...] } }
  */
 export async function getOrderDetails(userId, orderId) {
   const orderRes = await pool.query(
@@ -439,13 +533,14 @@ export async function getOrderDetailsAdmin(orderId) {
       currency: i.currency,
       quantity: Number(i.quantity),
       lineTotalCents: Number(i.quantity) * Number(i.unit_price_cents),
-      lineTotalCentsRaw: Number(i.line_total_cents), // keep existing field if used elsewhere
+      lineTotalCentsRaw: Number(i.line_total_cents),
     })),
   };
 }
 
 /**
  * Admin: Status Update (Transition-Guards) + Status-Timestamps
+ * Day 32: writes an order_status_events row on successful transition.
  */
 export async function updateOrderStatusAdmin(orderId, nextStatus) {
   const client = await pool.connect();
@@ -454,7 +549,7 @@ export async function updateOrderStatusAdmin(orderId, nextStatus) {
 
     const curRes = await client.query(
       `
-      SELECT id, status, currency, subtotal_cents, payment_intent_id,
+      SELECT id, user_id, status, currency, subtotal_cents, payment_intent_id,
              created_at, updated_at, paid_at, shipped_at, completed_at
       FROM orders
       WHERE id = $1
@@ -518,6 +613,15 @@ export async function updateOrderStatusAdmin(orderId, nextStatus) {
       [orderId, nextStatus],
     );
 
+    await createOrderStatusEvent(client, {
+      orderId: Number(orderId),
+      fromStatus: currentStatus,
+      toStatus: nextStatus,
+      reason: null,
+      source: 'admin',
+      metadata: {},
+    });
+
     await client.query('COMMIT');
 
     const u = updRes.rows[0];
@@ -544,6 +648,7 @@ export async function updateOrderStatusAdmin(orderId, nextStatus) {
 
 /**
  * Stripe webhook helper: mark order as paid (idempotent) and bind paymentIntentId.
+ * Day 32: emits status event only when a real transition happened.
  */
 export async function markOrderPaidByWebhook(orderId, paymentIntentId) {
   const pi = String(paymentIntentId ?? '').trim();
@@ -581,7 +686,6 @@ export async function markOrderPaidByWebhook(orderId, paymentIntentId) {
     const currentStatus = cur.status;
     const existingPi = cur.payment_intent_id ?? null;
 
-    // If a different PI is already attached -> conflict
     if (existingPi && existingPi !== pi) {
       throw new HttpError({
         status: 409,
@@ -590,7 +694,6 @@ export async function markOrderPaidByWebhook(orderId, paymentIntentId) {
       });
     }
 
-    // If already paid or beyond, only ensure PI is stored (idempotent)
     if (currentStatus === 'paid' || currentStatus === 'shipped' || currentStatus === 'completed') {
       if (!existingPi) {
         await client.query(
@@ -608,16 +711,13 @@ export async function markOrderPaidByWebhook(orderId, paymentIntentId) {
       return;
     }
 
-    // If cancelled, do not resurrect it
     if (currentStatus === 'cancelled') {
       await client.query('COMMIT');
       return;
     }
 
-    // Only pending -> paid is allowed
     assertTransition(currentStatus, 'paid');
 
-    // Write: status + paid_at + payment_intent_id (idempotent)
     await client.query(
       `
       UPDATE orders
@@ -634,6 +734,15 @@ export async function markOrderPaidByWebhook(orderId, paymentIntentId) {
       [Number(orderId), pi],
     );
 
+    await createOrderStatusEvent(client, {
+      orderId: Number(orderId),
+      fromStatus: currentStatus,
+      toStatus: 'paid',
+      reason: null,
+      source: 'webhook',
+      metadata: { paymentIntentId: pi, sourceEvent: 'payment_intent.succeeded' },
+    });
+
     await client.query('COMMIT');
   } catch (e) {
     await client.query('ROLLBACK');
@@ -645,8 +754,7 @@ export async function markOrderPaidByWebhook(orderId, paymentIntentId) {
 
 /**
  * Day 31: Stripe webhook helper for failures/cancellations.
- * We keep MVP semantics: set status to 'cancelled' (no new status enum introduced).
- * Idempotent: if already cancelled or progressed beyond cancellation rules, it won't break.
+ * Day 32: emits status event only when transition occurs.
  */
 export async function markOrderCancelledByWebhook(orderId, paymentIntentId, meta = {}) {
   const pi = String(paymentIntentId ?? '').trim();
@@ -657,8 +765,6 @@ export async function markOrderCancelledByWebhook(orderId, paymentIntentId, meta
       message: 'paymentIntentId fehlt.',
     });
   }
-
-  // Day 31 MVP: use meta for structured logs so ESLint doesn't complain (and it's useful).
 
   console.log(
     JSON.stringify(
@@ -701,7 +807,6 @@ export async function markOrderCancelledByWebhook(orderId, paymentIntentId, meta
     const currentStatus = cur.status;
     const existingPi = cur.payment_intent_id ?? null;
 
-    // If a different PI is already attached -> conflict
     if (existingPi && existingPi !== pi) {
       throw new HttpError({
         status: 409,
@@ -710,7 +815,6 @@ export async function markOrderCancelledByWebhook(orderId, paymentIntentId, meta
       });
     }
 
-    // If already cancelled -> idempotent OK
     if (currentStatus === 'cancelled') {
       if (!existingPi) {
         await client.query(
@@ -728,13 +832,11 @@ export async function markOrderCancelledByWebhook(orderId, paymentIntentId, meta
       return;
     }
 
-    // Do not cancel completed orders
     if (currentStatus === 'completed') {
       await client.query('COMMIT');
       return;
     }
 
-    // Ensure transition is allowed (pending->cancelled, paid->cancelled)
     assertTransition(currentStatus, 'cancelled');
 
     await client.query(
@@ -748,6 +850,15 @@ export async function markOrderCancelledByWebhook(orderId, paymentIntentId, meta
       `,
       [Number(orderId), pi],
     );
+
+    await createOrderStatusEvent(client, {
+      orderId: Number(orderId),
+      fromStatus: currentStatus,
+      toStatus: 'cancelled',
+      reason: meta?.reason ?? null,
+      source: 'webhook',
+      metadata: { paymentIntentId: pi, ...meta },
+    });
 
     await client.query('COMMIT');
   } catch (e) {

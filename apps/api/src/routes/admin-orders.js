@@ -1,3 +1,4 @@
+// apps/api/src/routes/admin-orders.js
 import express from 'express';
 import { z } from 'zod';
 
@@ -8,6 +9,7 @@ import {
   listAllOrdersAdmin,
   getOrderDetailsAdmin,
   updateOrderStatusAdmin,
+  listOrderStatusEventsAdmin,
 } from '../db/repositories/order-repository.js';
 
 export const adminOrdersRouter = express.Router();
@@ -32,6 +34,20 @@ adminOrdersRouter.get(
   asyncHandler(async (_req, res) => {
     const orders = await listAllOrdersAdmin();
     res.status(200).json({ orders });
+  }),
+);
+
+/**
+ * GET /admin/orders/:id/timeline
+ * Timeline Events (admin).
+ */
+adminOrdersRouter.get(
+  '/:id/timeline',
+  validate({ params: idParamsSchema }),
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const events = await listOrderStatusEventsAdmin(id);
+    res.status(200).json({ events });
   }),
 );
 

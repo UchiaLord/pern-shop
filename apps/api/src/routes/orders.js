@@ -1,3 +1,4 @@
+// apps/api/src/routes/orders.js
 import express from 'express';
 import { z } from 'zod';
 
@@ -8,13 +9,14 @@ import { NotFoundError } from '../errors/common.js';
 import {
   createOrderFromCart,
   getOrderDetails,
-  listOrdersByUser
+  listOrdersByUser,
+  listOrderStatusEventsForUser,
 } from '../db/repositories/order-repository.js';
 
 export const ordersRouter = express.Router();
 
 const orderIdParams = z.object({
-  id: z.coerce.number().int().positive()
+  id: z.coerce.number().int().positive(),
 });
 
 function ensureCart(req) {
@@ -40,7 +42,7 @@ ordersRouter.post(
     req.session.cart = { items: [] };
 
     res.status(201).json(result);
-  })
+  }),
 );
 
 /**
@@ -54,7 +56,26 @@ ordersRouter.get(
     const userId = Number(req.session.user.id);
     const orders = await listOrdersByUser(userId);
     res.status(200).json({ orders });
-  })
+  }),
+);
+
+/**
+ * GET /orders/:id/timeline
+ * Timeline Events für eingeloggten User (nur Owner).
+ */
+ordersRouter.get(
+  '/:id/timeline',
+  requireAuth,
+  validate({ params: orderIdParams }),
+  asyncHandler(async (req, res) => {
+    const userId = Number(req.session.user.id);
+    const orderId = Number(req.params.id);
+
+    const events = await listOrderStatusEventsForUser(userId, orderId);
+    if (!events) throw new NotFoundError('Bestellung nicht gefunden.');
+
+    res.status(200).json({ events });
+  }),
 );
 
 /**
@@ -73,5 +94,5 @@ ordersRouter.get(
     if (!details) throw new NotFoundError('Bestellung nicht gefunden.');
 
     res.status(200).json(details);
-  })
+  }),
 );
