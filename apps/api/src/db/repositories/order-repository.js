@@ -1,3 +1,4 @@
+// apps/api/src/db/repositories/order-repository.js
 import { pool } from '../pool.js';
 import { HttpError } from '../../errors/http-error.js';
 
@@ -91,6 +92,7 @@ export async function createOrderFromCart(userId, items) {
       VALUES ($1, $2, $3, 'pending')
       RETURNING
         id, user_id, currency, subtotal_cents, status,
+        payment_intent_id,
         created_at, updated_at,
         paid_at, shipped_at, completed_at
       `,
@@ -138,6 +140,7 @@ export async function createOrderFromCart(userId, items) {
         currency: order.currency,
         subtotalCents: Number(order.subtotal_cents),
         status: order.status,
+        paymentIntentId: order.payment_intent_id ?? null,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
         paidAt: order.paid_at,
@@ -163,12 +166,85 @@ export async function createOrderFromCart(userId, items) {
 }
 
 /**
+ * Attach a PaymentIntent to an order (idempotent).
+ * - If order already has same payment_intent_id -> OK
+ * - If order already has different payment_intent_id -> conflict
+ * - If payment_intent_id is already used by another order -> conflict (unique index)
+ */
+export async function attachPaymentIntentToOrder(orderId, paymentIntentId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const curRes = await client.query(
+      `
+      SELECT id, status, payment_intent_id
+      FROM orders
+      WHERE id = $1
+      FOR UPDATE
+      `,
+      [Number(orderId)],
+    );
+
+    if (curRes.rowCount === 0) {
+      throw new HttpError({
+        status: 404,
+        code: 'ORDER_NOT_FOUND',
+        message: 'Order existiert nicht.',
+      });
+    }
+
+    const cur = curRes.rows[0];
+    const existing = cur.payment_intent_id ?? null;
+
+    if (existing && existing !== paymentIntentId) {
+      throw new HttpError({
+        status: 409,
+        code: 'PAYMENT_INTENT_CONFLICT',
+        message: 'Order hat bereits eine andere PaymentIntent ID.',
+      });
+    }
+
+    if (!existing) {
+      try {
+        await client.query(
+          `
+          UPDATE orders
+          SET
+            payment_intent_id = $2,
+            updated_at = NOW()
+          WHERE id = $1
+          `,
+          [Number(orderId), String(paymentIntentId)],
+        );
+      } catch (e) {
+        // unique violation or other constraint -> report as conflict
+        throw new HttpError({
+          status: 409,
+          code: 'PAYMENT_INTENT_CONFLICT',
+          message: 'PaymentIntent ist bereits einer anderen Order zugeordnet.',
+          details: { reason: e?.message ?? String(e) },
+        });
+      }
+    }
+
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * User: Liste der eigenen Orders
  */
 export async function listOrdersByUser(userId) {
   const res = await pool.query(
     `
-    SELECT id, status, currency, subtotal_cents, created_at, updated_at, paid_at, shipped_at, completed_at
+    SELECT id, status, currency, subtotal_cents, payment_intent_id,
+           created_at, updated_at, paid_at, shipped_at, completed_at
     FROM orders
     WHERE user_id = $1
     ORDER BY id DESC
@@ -181,6 +257,7 @@ export async function listOrdersByUser(userId) {
     status: o.status,
     currency: o.currency,
     subtotalCents: Number(o.subtotal_cents),
+    paymentIntentId: o.payment_intent_id ?? null,
     createdAt: o.created_at,
     updatedAt: o.updated_at,
     paidAt: o.paid_at,
@@ -191,12 +268,13 @@ export async function listOrdersByUser(userId) {
 
 /**
  * User: Details einer Order (nur wenn owner)
- * @returns {null | {order: {...}, items: [...]}}
+ * @returns {null | {order: {...}, items: [...]} }
  */
 export async function getOrderDetails(userId, orderId) {
   const orderRes = await pool.query(
     `
-    SELECT id, user_id, status, currency, subtotal_cents, created_at, updated_at, paid_at, shipped_at, completed_at
+    SELECT id, user_id, status, currency, subtotal_cents, payment_intent_id,
+           created_at, updated_at, paid_at, shipped_at, completed_at
     FROM orders
     WHERE id = $1 AND user_id = $2
     `,
@@ -224,6 +302,7 @@ export async function getOrderDetails(userId, orderId) {
       status: o.status,
       currency: o.currency,
       subtotalCents: Number(o.subtotal_cents),
+      paymentIntentId: o.payment_intent_id ?? null,
       createdAt: o.created_at,
       updatedAt: o.updated_at,
       paidAt: o.paid_at,
@@ -248,7 +327,8 @@ export async function getOrderDetails(userId, orderId) {
 export async function listAllOrdersAdmin() {
   const res = await pool.query(
     `
-    SELECT id, user_id, status, currency, subtotal_cents, created_at, updated_at, paid_at, shipped_at, completed_at
+    SELECT id, user_id, status, currency, subtotal_cents, payment_intent_id,
+           created_at, updated_at, paid_at, shipped_at, completed_at
     FROM orders
     ORDER BY id DESC
     `,
@@ -260,6 +340,7 @@ export async function listAllOrdersAdmin() {
     status: o.status,
     currency: o.currency,
     subtotalCents: Number(o.subtotal_cents),
+    paymentIntentId: o.payment_intent_id ?? null,
     createdAt: o.created_at,
     updatedAt: o.updated_at,
     paidAt: o.paid_at,
@@ -274,7 +355,8 @@ export async function listAllOrdersAdmin() {
 export async function getOrderDetailsAdmin(orderId) {
   const orderRes = await pool.query(
     `
-    SELECT id, user_id, status, currency, subtotal_cents, created_at, updated_at, paid_at, shipped_at, completed_at
+    SELECT id, user_id, status, currency, subtotal_cents, payment_intent_id,
+           created_at, updated_at, paid_at, shipped_at, completed_at
     FROM orders
     WHERE id = $1
     `,
@@ -308,6 +390,7 @@ export async function getOrderDetailsAdmin(orderId) {
       status: o.status,
       currency: o.currency,
       subtotalCents: Number(o.subtotal_cents),
+      paymentIntentId: o.payment_intent_id ?? null,
       createdAt: o.created_at,
       updatedAt: o.updated_at,
       paidAt: o.paid_at,
@@ -321,7 +404,8 @@ export async function getOrderDetailsAdmin(orderId) {
       unitPriceCents: Number(i.unit_price_cents),
       currency: i.currency,
       quantity: Number(i.quantity),
-      lineTotalCents: Number(i.line_total_cents),
+      lineTotalCents: Number(i.quantity) * Number(i.unit_price_cents),
+      lineTotalCentsRaw: Number(i.line_total_cents), // keep existing field if used elsewhere
     })),
   };
 }
@@ -336,7 +420,8 @@ export async function updateOrderStatusAdmin(orderId, nextStatus) {
 
     const curRes = await client.query(
       `
-      SELECT id, status, currency, subtotal_cents, created_at, updated_at, paid_at, shipped_at, completed_at
+      SELECT id, status, currency, subtotal_cents, payment_intent_id,
+             created_at, updated_at, paid_at, shipped_at, completed_at
       FROM orders
       WHERE id = $1
       FOR UPDATE
@@ -361,9 +446,11 @@ export async function updateOrderStatusAdmin(orderId, nextStatus) {
       await client.query('COMMIT');
       return {
         id: Number(cur.id),
+        userId: Number(cur.user_id),
         status: cur.status,
         currency: cur.currency,
         subtotalCents: Number(cur.subtotal_cents),
+        paymentIntentId: cur.payment_intent_id ?? null,
         createdAt: cur.created_at,
         updatedAt: cur.updated_at,
         paidAt: cur.paid_at,
@@ -391,7 +478,8 @@ export async function updateOrderStatusAdmin(orderId, nextStatus) {
           ELSE completed_at
         END
       WHERE id = $1
-      RETURNING id, user_id, status, currency, subtotal_cents, created_at, updated_at, paid_at, shipped_at, completed_at
+      RETURNING id, user_id, status, currency, subtotal_cents, payment_intent_id,
+                created_at, updated_at, paid_at, shipped_at, completed_at
       `,
       [orderId, nextStatus],
     );
@@ -405,12 +493,108 @@ export async function updateOrderStatusAdmin(orderId, nextStatus) {
       status: u.status,
       currency: u.currency,
       subtotalCents: Number(u.subtotal_cents),
+      paymentIntentId: u.payment_intent_id ?? null,
       createdAt: u.created_at,
       updatedAt: u.updated_at,
       paidAt: u.paid_at,
       shippedAt: u.shipped_at,
       completedAt: u.completed_at,
     };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Stripe webhook helper: mark order as paid (idempotent) and bind paymentIntentId.
+ */
+export async function markOrderPaidByWebhook(orderId, paymentIntentId) {
+  const pi = String(paymentIntentId ?? '').trim();
+  if (!pi) {
+    throw new HttpError({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      message: 'paymentIntentId fehlt.',
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const curRes = await client.query(
+      `
+      SELECT id, status, paid_at, payment_intent_id
+      FROM orders
+      WHERE id = $1
+      FOR UPDATE
+      `,
+      [Number(orderId)],
+    );
+
+    if (curRes.rowCount === 0) {
+      throw new HttpError({
+        status: 404,
+        code: 'ORDER_NOT_FOUND',
+        message: 'Order existiert nicht.',
+      });
+    }
+
+    const cur = curRes.rows[0];
+    const currentStatus = cur.status;
+    const existingPi = cur.payment_intent_id ?? null;
+
+    // If a different PI is already attached -> conflict
+    if (existingPi && existingPi !== pi) {
+      throw new HttpError({
+        status: 409,
+        code: 'PAYMENT_INTENT_CONFLICT',
+        message: 'Order hat bereits eine andere PaymentIntent ID.',
+      });
+    }
+
+    // If already paid or beyond, only ensure PI is stored (idempotent)
+    if (currentStatus === 'paid' || currentStatus === 'shipped' || currentStatus === 'completed') {
+      if (!existingPi) {
+        await client.query(
+          `
+          UPDATE orders
+          SET
+            payment_intent_id = $2,
+            updated_at = NOW()
+          WHERE id = $1
+          `,
+          [Number(orderId), pi],
+        );
+      }
+      await client.query('COMMIT');
+      return;
+    }
+
+    // Only pending -> paid is allowed
+    assertTransition(currentStatus, 'paid');
+
+    // Write: status + paid_at + payment_intent_id (idempotent)
+    await client.query(
+      `
+      UPDATE orders
+      SET
+        status = 'paid',
+        payment_intent_id = COALESCE(payment_intent_id, $2),
+        updated_at = NOW(),
+        paid_at = CASE
+          WHEN paid_at IS NULL THEN NOW()
+          ELSE paid_at
+        END
+      WHERE id = $1
+      `,
+      [Number(orderId), pi],
+    );
+
+    await client.query('COMMIT');
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;

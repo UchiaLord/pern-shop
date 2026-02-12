@@ -1,5 +1,4 @@
 // apps/web/src/lib/types.ts
-
 export type ApiError = {
   error: {
     code: string;
@@ -25,15 +24,6 @@ export type Product = {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
-};
-
-export type CartItem = {
-  productId: number;
-  quantity: number;
-};
-
-export type Cart = {
-  items: CartItem[];
 };
 
 export type OrderStatus = 'pending' | 'paid' | 'shipped' | 'completed' | 'cancelled';
@@ -83,4 +73,40 @@ export type AdminOrder = OrderSummary & {
 export type AdminOrderDetails = {
   order: AdminOrder;
   items: OrderItem[];
+};
+
+/**
+ * Cart typing (GET /cart)
+ *
+ * Backend liefert enriched Cart:
+ * cart: {
+ *   items: [{ productId, sku, name, currency, unitPriceCents, quantity, lineTotalCents }],
+ *   subtotalCents,
+ *   currency
+ * }
+ *
+ * => Diese Felder sind im Frontend REQUIRED, damit Pages wie Cart/Checkout ohne Optional-Chains stabil sind.
+ */
+export type CartItem = {
+  productId: number;
+  sku: string;
+  name: string;
+  currency: string;
+  unitPriceCents: number;
+  quantity: number;
+  lineTotalCents: number;
+};
+
+export type Cart = {
+  items: CartItem[];
+  subtotalCents: number;
+  currency: string;
+};
+
+/**
+ * Payments (Stripe)
+ */
+export type CreatePaymentIntentResponse = {
+  orderId: number;
+  clientSecret: string;
 };

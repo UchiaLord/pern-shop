@@ -1,19 +1,20 @@
-export type OrderStatus = 'pending' | 'paid' | 'shipped' | 'completed' | 'cancelled';
+// apps/web/src/lib/orderStatus.ts
+import type { OrderStatus } from './types';
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
-  pending: 'Ausstehend',
-  paid: 'Bezahlt',
-  shipped: 'Versandt',
-  completed: 'Abgeschlossen',
-  cancelled: 'Storniert',
+  pending: 'Pending',
+  paid: 'Paid',
+  shipped: 'Shipped',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
 };
 
 export const ORDER_STATUS_CLASS: Record<OrderStatus, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
-  paid: 'bg-green-100 text-green-800',
-  shipped: 'bg-blue-100 text-blue-800',
-  completed: 'bg-emerald-100 text-emerald-800',
-  cancelled: 'bg-gray-200 text-gray-700',
+  paid: 'bg-blue-100 text-blue-800',
+  shipped: 'bg-purple-100 text-purple-800',
+  completed: 'bg-green-100 text-green-800',
+  cancelled: 'bg-red-100 text-red-800',
 };
 
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
@@ -39,39 +40,13 @@ export function isDangerStatus(next: OrderStatus): boolean {
 export type OrderStatusAction = {
   nextStatus: OrderStatus;
   label: string;
-  variant: 'primary' | 'secondary' | 'danger';
-  confirm?: {
-    title: string;
-    message: string;
-  };
+  danger?: boolean;
 };
 
 export function getOrderStatusActions(current: OrderStatus): OrderStatusAction[] {
-  const next = allowedNextStatuses(current);
-
-  return next.map((s) => {
-    if (s === 'paid') {
-      return { nextStatus: 'paid', label: 'Als bezahlt markieren', variant: 'primary' };
-    }
-    if (s === 'shipped') {
-      return { nextStatus: 'shipped', label: 'Als versandt markieren', variant: 'primary' };
-    }
-    if (s === 'completed') {
-      return { nextStatus: 'completed', label: 'Als abgeschlossen markieren', variant: 'primary' };
-    }
-    if (s === 'cancelled') {
-      return {
-        nextStatus: 'cancelled',
-        label: 'Stornieren',
-        variant: 'danger',
-        confirm: {
-          title: 'Order stornieren?',
-          message: 'Order wirklich stornieren? Dieser Vorgang ist endgültig.',
-        },
-      };
-    }
-
-    // Fallback (sollte nie passieren, aber defensiv)
-    return { nextStatus: s, label: `Status setzen: ${s}`, variant: 'secondary' };
-  });
+  return allowedNextStatuses(current).map((next) => ({
+    nextStatus: next,
+    label: ORDER_STATUS_LABEL[next] ?? next,
+    danger: isDangerStatus(next),
+  }));
 }

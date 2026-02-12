@@ -1,5 +1,6 @@
+// apps/web/src/pages/ProductsPage.tsx
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { motion } from 'framer-motion';
 import { useAuth } from '../auth/useAuth';
@@ -88,7 +89,6 @@ export default function ProductsPage() {
 
     try {
       await api.cart.upsertItem(productId, 1);
-      // optional: later show toast "Added to cart"
     } catch (err: unknown) {
       setError(extractErrorMessage(err));
     } finally {
@@ -108,7 +108,7 @@ export default function ProductsPage() {
           <div className="text-xs tracking-widest text-[rgb(var(--muted))]">CATALOG</div>
           <h1 className="text-3xl font-semibold tracking-tight text-[rgb(var(--fg))]">Products</h1>
           <p className="mt-1 text-sm text-[rgb(var(--muted))]">
-            Futuristic storefront UI shell. Add-to-cart requires login.
+            Browse products. Add-to-cart requires login. Click a card for details.
           </p>
         </div>
 
@@ -185,39 +185,66 @@ export default function ProductsPage() {
               }}
               transition={{ duration: 0.18 }}
             >
-              <Card className="h-full">
-                <CardHeader className="space-y-1">
-                  <CardTitle className="flex items-start justify-between gap-3">
-                    <span className="leading-tight">{p.name}</span>
-                    <span className="rounded-2xl border border-white/10 bg-white/6 px-2 py-1 text-xs text-[rgb(var(--muted))]">
-                      {p.sku}
-                    </span>
-                  </CardTitle>
-                  <div className="text-sm text-[rgb(var(--muted))]">
-                    {formatCents(p.priceCents, p.currency)}
-                  </div>
-                </CardHeader>
+              <Link to={`/products/${p.id}`} className="block h-full">
+                <Card className="h-full cursor-pointer transition hover:bg-white/3">
+                  <CardHeader className="space-y-1">
+                    <CardTitle className="flex items-start justify-between gap-3">
+                      <span className="leading-tight">{p.name}</span>
+                      <span className="rounded-2xl border border-white/10 bg-white/6 px-2 py-1 text-xs text-[rgb(var(--muted))]">
+                        {p.sku}
+                      </span>
+                    </CardTitle>
+                    <div className="text-sm text-[rgb(var(--muted))]">
+                      {formatCents(p.priceCents, p.currency)}
+                    </div>
+                  </CardHeader>
 
-                <CardContent className="flex items-end justify-between gap-3">
-                  <div className="text-xs text-[rgb(var(--muted))]">
-                    ID: <span className="text-[rgb(var(--fg))]/70">{p.id}</span>
-                  </div>
+                  <CardContent className="flex items-end justify-between gap-3">
+                    <div className="text-xs text-[rgb(var(--muted))]">
+                      ID: <span className="text-[rgb(var(--fg))]/70">{p.id}</span>
+                    </div>
 
-                  {user ? (
-                    <Button
-                      className="min-w-[120px]"
-                      disabled={Boolean(isAdding[p.id])}
-                      onClick={() => void addToCart(p.id)}
-                    >
-                      {isAdding[p.id] ? 'Adding…' : 'Add to cart'}
-                    </Button>
-                  ) : (
-                    <Button className="min-w-[120px]" variant="ghost" disabled>
-                      Login required
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        className="min-w-[90px]"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                      >
+                        Details
+                      </Button>
+
+                      {user ? (
+                        <Button
+                          className="min-w-[120px]"
+                          disabled={Boolean(isAdding[p.id])}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void addToCart(p.id);
+                          }}
+                        >
+                          {isAdding[p.id] ? 'Adding…' : 'Add to cart'}
+                        </Button>
+                      ) : (
+                        <Button
+                          className="min-w-[120px]"
+                          variant="ghost"
+                          disabled
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                        >
+                          Login required
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             </motion.div>
           ))}
         </motion.div>

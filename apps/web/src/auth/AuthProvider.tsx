@@ -1,12 +1,29 @@
+// apps/web/src/auth/AuthProvider.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+
 import { api } from '../lib/api';
 import { AuthContext } from './AuthContext';
-import type { ApiError } from '../lib/types';
 import type { AuthState, User } from './types';
 
-function isUnauthenticated(err: unknown) {
-  const e = err as ApiError | undefined;
-  return e?.error?.code === 'UNAUTHENTICATED';
+type ApiThrownError = Error & {
+  code?: string;
+  status?: number;
+  details?: unknown;
+};
+
+function isUnauthenticated(err: unknown): boolean {
+  if (err instanceof Error) {
+    const e = err as ApiThrownError;
+
+    // Primary: contract from api.ts
+    if (e.status === 401) return true;
+    if (e.code === 'UNAUTHENTICATED') return true;
+
+    // Fallback: sometimes message may carry it
+    if ((e.message ?? '').toLowerCase().includes('unauth')) return true;
+  }
+
+  return false;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

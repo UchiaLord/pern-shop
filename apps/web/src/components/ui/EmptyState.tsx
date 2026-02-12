@@ -1,21 +1,37 @@
+// apps/web/src/components/ui/EmptyState.tsx
 import type { ReactNode } from 'react';
 
-type EmptyStateProps = {
-  title: string;
-  description?: string;
+type EmptyStateBase = {
   action?: ReactNode;
 };
 
-export default function EmptyState({ title, description, action }: EmptyStateProps) {
+type EmptyStateProps =
+  | (EmptyStateBase & {
+      title?: string;
+      description?: string;
+      message?: never;
+    })
+  | (EmptyStateBase & {
+      message: string;
+      title?: never;
+      description?: never;
+    });
+
+export default function EmptyState(props: EmptyStateProps) {
+  const title = 'title' in props ? props.title : undefined;
+  const description = 'description' in props ? props.description : undefined;
+  const message = 'message' in props ? props.message : undefined;
+
+  const main = message ?? title ?? 'Nothing here';
+  const sub = message ? undefined : description;
+
   return (
-    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-4 text-center">
-      <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
+    <div className="rounded-3xl border border-white/10 bg-white/6 p-4 backdrop-blur-md shadow-xl shadow-black/20">
+      <div className="text-sm font-semibold text-[rgb(var(--fg))]">{main}</div>
 
-      {description ? (
-        <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
-      ) : null}
+      {sub ? <div className="mt-1 text-sm text-[rgb(var(--muted))]">{sub}</div> : null}
 
-      {action ? <div className="mt-2">{action}</div> : null}
+      {props.action ? <div className="mt-3">{props.action}</div> : null}
     </div>
   );
 }

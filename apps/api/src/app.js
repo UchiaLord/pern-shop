@@ -1,14 +1,4 @@
-/**
- * Erstellt und konfiguriert die Express-Applikation.
- *
- * Verantwortung:
- * - Initialisiert globale Middleware (Request-ID, JSON-Parser)
- * - Registriert Routen
- * - Registriert 404-Handler und globalen Error-Handler
- *
- * Nicht-Verantwortung:
- * - Startet keinen HTTP-Server (kein listen) -> das macht `server.js`
- */
+// apps/api/src/app.js
 import 'dotenv/config';
 import express from 'express';
 import { z } from 'zod';
@@ -27,36 +17,38 @@ import { cartRouter } from './routes/cart.js';
 import { ordersRouter } from './routes/orders.js';
 import { adminOrdersRouter } from './routes/admin-orders.js';
 import { adminProductsRouter } from './routes/admin-products.js';
+import paymentsRouter from './routes/payments.js';
+import stripeWebhooksRouter from './routes/webhooks.js';
 
-/**
- * Factory zur Erstellung einer Express-App.
- *
- * @returns {import('express').Express} konfigurierte Express-App
- */
 export function createApp() {
   const app = express();
 
-  /**
-   * Request-ID Middleware MUSS vor Body-Parsing laufen.
-   * Bei kaputtem JSON wollen wir trotzdem eine requestId.
-   */
   app.use(requestIdMiddleware);
 
-  // Security BEFORE body parsing & routes
   applySecurityMiddleware(app);
 
-  // JSON Parser mit Limit
+  // Fail-fast: if router import is broken, crash with a clear message.
+  if (typeof stripeWebhooksRouter !== 'function') {
+    throw new Error(
+      `stripeWebhooksRouter import is invalid (expected express.Router() function). Got: ${typeof stripeWebhooksRouter}`,
+    );
+  }
+  if (typeof paymentsRouter !== 'function') {
+    throw new Error(
+      `paymentsRouter import is invalid (expected express.Router() function). Got: ${typeof paymentsRouter}`,
+    );
+  }
+
+  app.use('/webhooks/stripe', express.raw({ type: 'application/json' }), stripeWebhooksRouter);
+
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
-  // Trust proxy nur, wenn es wirklich gebraucht wird (Prod oder explizit per ENV)
   if (process.env.NODE_ENV === 'production' || TRUST_PROXY) {
     app.set('trust proxy', 1);
   }
 
-  // Session Middleware (Postgres Store) MUSS vor /auth liegen
   app.use(createSessionMiddleware());
 
-  // Parser-Fehler (invalid JSON) in unseren Contract übersetzen
   app.use((err, _req, _res, next) => {
     if (err instanceof SyntaxError) {
       return next(new BadRequestError('Ungültiges JSON', err));
@@ -64,20 +56,16 @@ export function createApp() {
     return next(err);
   });
 
-  // Routen
   app.use('/auth', authRouter);
   app.use('/products', productsRouter);
   app.use('/cart', cartRouter);
   app.use('/orders', ordersRouter);
 
-  // Admin
+  app.use('/payments', paymentsRouter);
+
   app.use('/admin/orders', adminOrdersRouter);
   app.use('/admin/products', adminProductsRouter);
 
-  /**
-   * Test-only Route für RBAC.
-   * Wird ausschließlich im Test-Modus registriert.
-   */
   if (process.env.NODE_ENV === 'test') {
     app.get('/__test__/admin-only', requireRole('admin'), (_req, res) => {
       res.status(200).json({ ok: true });
@@ -113,10 +101,7 @@ export function createApp() {
     },
   );
 
-  // 404 Fallback (muss NACH allen Routen kommen)
   app.use((_req, _res, next) => next(new NotFoundError()));
-
-  // Globaler Error-Handler (muss ganz am Ende kommen)
   app.use(errorHandler);
 
   return app;

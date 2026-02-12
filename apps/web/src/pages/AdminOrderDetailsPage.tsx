@@ -1,10 +1,14 @@
 // apps/web/src/pages/AdminOrderDetailsPage.tsx
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { api } from '../lib/api';
 import type { AdminOrderDetails, OrderStatus } from '../lib/types';
 import { extractErrorMessage } from '../lib/errors';
+
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
 
 function formatMoney(cents: number, currency: string) {
   return new Intl.NumberFormat('de-AT', { style: 'currency', currency }).format(cents / 100);
@@ -20,9 +24,25 @@ function formatDate(iso: string) {
   }
 }
 
+function normalizeAllowedNextStatuses(input: unknown): OrderStatus[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter((v): v is OrderStatus => typeof v === 'string') as OrderStatus[];
+}
+
+function normalizeItems(input: unknown) {
+  if (!Array.isArray(input)) return [];
+  return input as AdminOrderDetails['items'];
+}
+
+function normalizeStatusEvents(input: unknown) {
+  if (!Array.isArray(input)) return [];
+  return input as AdminOrderDetails['order']['statusEvents'];
+}
+
 export default function AdminOrderDetailsPage() {
   const params = useParams();
   const id = Number(params.id);
+  const isValidId = Number.isFinite(id) && id > 0;
 
   const [details, setDetails] = useState<AdminOrderDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,75 +50,80 @@ export default function AdminOrderDetailsPage() {
   const [nextStatus, setNextStatus] = useState<OrderStatus | ''>('');
   const [reason, setReason] = useState<string>('');
 
-  const allowed: OrderStatus[] = useMemo(
-    () => (details?.order.allowedNextStatuses ?? []) as OrderStatus[],
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const allowed: OrderStatus[] = useMemo(() => {
+    const raw = details?.order?.allowedNextStatuses;
+    return normalizeAllowedNextStatuses(raw);
+  }, [details]);
+
+  const safeItems = useMemo(() => normalizeItems(details?.items), [details]);
+  const safeStatusEvents = useMemo(
+    () => normalizeStatusEvents(details?.order?.statusEvents),
     [details],
   );
 
-  const isValidId = Number.isFinite(id) && id > 0;
-
-  function loadDetails() {
-    setError(null);
-    return api.admin.orders.get(id);
-  }
-
-  function reload() {
+  const reload = useCallback(async () => {
     if (!isValidId) return;
 
-    loadDetails()
-      .then((res) => {
-        setDetails(res);
+    setLoading(true);
+    setError(null);
 
-        const first = res.order.allowedNextStatuses[0] ?? '';
-        setNextStatus(first as OrderStatus | '');
-        setReason('');
-      })
-      .catch((err: unknown) => {
-        setError(extractErrorMessage(err));
-      });
-  }
+    try {
+      const res = await api.admin.orders.get(id);
+      setDetails(res);
 
-  async function submitStatusUpdate() {
+      const nextAllowed = normalizeAllowedNextStatuses(res?.order?.allowedNextStatuses);
+      const first = nextAllowed[0] ?? '';
+      setNextStatus(first);
+      setReason('');
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err));
+      // keep details as-is if it exists; otherwise stays null and loading UI handles it
+    } finally {
+      setLoading(false);
+    }
+  }, [id, isValidId]);
+
+  const submitStatusUpdate = useCallback(async () => {
+    if (!isValidId) return;
     if (!details) return;
     if (!nextStatus) return;
+    if (saving) return;
 
+    setSaving(true);
     setError(null);
 
     try {
       const trimmed = reason.trim();
-      const payload = trimmed.length > 0 ? { status: nextStatus, reason: trimmed } : { status: nextStatus };
+      const payload =
+        trimmed.length > 0 ? { status: nextStatus, reason: trimmed } : { status: nextStatus };
 
       await api.admin.orders.updateStatus(id, payload);
-      reload();
+      await reload();
     } catch (err: unknown) {
       setError(extractErrorMessage(err));
+    } finally {
+      setSaving(false);
     }
-  }
+  }, [details, id, isValidId, nextStatus, reason, reload, saving]);
 
   useEffect(() => {
-    if (!isValidId) return;
-
-    loadDetails()
-      .then((res) => {
-        setDetails(res);
-
-        const first = res.order.allowedNextStatuses[0] ?? '';
-        setNextStatus(first as OrderStatus | '');
-        setReason('');
-      })
-      .catch((err: unknown) => {
-        setError(extractErrorMessage(err));
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    void reload();
+  }, [reload]);
 
   if (!isValidId) {
     return (
-      <div style={{ padding: 16 }}>
-        <h2>Admin – Order</h2>
-        <div style={{ color: 'crimson' }}>Ungültige Order-ID.</div>
-        <div style={{ marginTop: 12 }}>
-          <Link to="/admin/orders">Back</Link>
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Admin – Order</h2>
+        <Card className="p-4">
+          <div className="text-sm text-red-600">Ungültige Order-ID.</div>
+        </Card>
+        <div>
+          <Link className="underline" to="/admin/orders">
+            Back
+          </Link>
         </div>
       </div>
     );
@@ -106,11 +131,15 @@ export default function AdminOrderDetailsPage() {
 
   if (error && !details) {
     return (
-      <div style={{ padding: 16 }}>
-        <h2>Admin – Order</h2>
-        <div style={{ color: 'crimson' }}>{error}</div>
-        <div style={{ marginTop: 12 }}>
-          <Link to="/admin/orders">Back</Link>
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Admin – Order</h2>
+        <Card className="p-4">
+          <div className="text-sm text-red-600">{error}</div>
+        </Card>
+        <div>
+          <Link className="underline" to="/admin/orders">
+            Back
+          </Link>
         </div>
       </div>
     );
@@ -118,68 +147,93 @@ export default function AdminOrderDetailsPage() {
 
   if (!details) {
     return (
-      <div style={{ padding: 16 }}>
-        <h2>Admin – Order</h2>
-        <div>Loading…</div>
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Admin – Order</h2>
+        <Card className="p-4">
+          <div className="text-sm">Loading…</div>
+        </Card>
       </div>
     );
   }
 
   const o = details.order;
+  const canChangeStatus = allowed.length > 0;
+  const disableActions = loading || saving;
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <h2>Admin – Order #{o.id}</h2>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <Link to="/admin/orders">Back</Link>
-          <button onClick={reload}>Reload</button>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold">Admin – Order #{o.id}</h2>
+        <div className="flex flex-wrap gap-3">
+          <Link className="underline" to="/admin/orders">
+            Back
+          </Link>
+          <Button onClick={reload} disabled={disableActions}>
+            {loading ? 'Loading…' : 'Reload'}
+          </Button>
         </div>
       </div>
 
-      {error && <div style={{ color: 'crimson', marginBottom: 12 }}>{error}</div>}
+      {error && (
+        <Card className="p-4">
+          <div className="text-sm text-red-600">{error}</div>
+        </Card>
+      )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div style={{ border: '1px solid #eee', padding: 12, borderRadius: 8 }}>
-          <h3 style={{ marginTop: 0 }}>Summary</h3>
-          <div>
-            <strong>Status:</strong> {o.status}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="p-4">
+          <h3 className="mb-3 text-base font-semibold">Summary</h3>
+          <div className="space-y-1 text-sm">
+            <div>
+              <span className="font-semibold">Status:</span> {o.status}
+            </div>
+            <div>
+              <span className="font-semibold">UserId:</span> {o.userId}
+            </div>
+            <div>
+              <span className="font-semibold">Subtotal:</span>{' '}
+              {formatMoney(o.subtotalCents, o.currency ?? 'EUR')}
+            </div>
+            <div>
+              <span className="font-semibold">Created:</span> {formatDate(o.createdAt)}
+            </div>
+            <div>
+              <span className="font-semibold">Updated:</span> {formatDate(o.updatedAt)}
+            </div>
+            <div>
+              <span className="font-semibold">Paid:</span> {o.paidAt ? formatDate(o.paidAt) : '—'}
+            </div>
+            <div>
+              <span className="font-semibold">Shipped:</span>{' '}
+              {o.shippedAt ? formatDate(o.shippedAt) : '—'}
+            </div>
+            <div>
+              <span className="font-semibold">Completed:</span>{' '}
+              {o.completedAt ? formatDate(o.completedAt) : '—'}
+            </div>
           </div>
-          <div>
-            <strong>UserId:</strong> {o.userId}
-          </div>
-          <div>
-            <strong>Subtotal:</strong> {formatMoney(o.subtotalCents, o.currency ?? 'EUR')}
-          </div>
-          <div>
-            <strong>Created:</strong> {formatDate(o.createdAt)}
-          </div>
-          <div>
-            <strong>Updated:</strong> {formatDate(o.updatedAt)}
-          </div>
-          <div>
-            <strong>Paid:</strong> {o.paidAt ? formatDate(o.paidAt) : '—'}
-          </div>
-          <div>
-            <strong>Shipped:</strong> {o.shippedAt ? formatDate(o.shippedAt) : '—'}
-          </div>
-          <div>
-            <strong>Completed:</strong> {o.completedAt ? formatDate(o.completedAt) : '—'}
-          </div>
-        </div>
+        </Card>
 
-        <div style={{ border: '1px solid #eee', padding: 12, borderRadius: 8 }}>
-          <h3 style={{ marginTop: 0 }}>Change Status</h3>
+        <Card className="p-4">
+          <h3 className="mb-3 text-base font-semibold">Change Status</h3>
 
-          {allowed.length === 0 ? (
-            <div>Keine weiteren Statuswechsel möglich.</div>
+          {!canChangeStatus ? (
+            <EmptyState
+              title="Keine weiteren Statuswechsel möglich"
+              description="Für diesen Order gibt es aktuell keine erlaubten Übergänge."
+            />
           ) : (
-            <>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label>
-                  Next status:{' '}
-                  <select value={nextStatus} onChange={(e) => setNextStatus(e.target.value as OrderStatus)}>
-                    {allowed.map((s: OrderStatus) => (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="text-sm">
+                  <span className="mr-2 font-semibold">Next status:</span>
+                  <select
+                    className="rounded border px-2 py-1"
+                    value={nextStatus}
+                    onChange={(e) => setNextStatus(e.target.value as OrderStatus)}
+                    disabled={disableActions}
+                  >
+                    {allowed.map((s) => (
                       <option key={s} value={s}>
                         {s}
                       </option>
@@ -187,91 +241,101 @@ export default function AdminOrderDetailsPage() {
                   </select>
                 </label>
 
-                <button onClick={submitStatusUpdate}>Apply</button>
+                <Button
+                  onClick={submitStatusUpdate}
+                  disabled={disableActions || !nextStatus}
+                  aria-disabled={disableActions || !nextStatus}
+                >
+                  {saving ? 'Applying…' : 'Apply'}
+                </Button>
               </div>
 
-              <div style={{ marginTop: 12 }}>
-                <label style={{ display: 'block' }}>
-                  Reason (optional, 1..500):
-                  <textarea
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    rows={4}
-                    style={{ width: '100%', marginTop: 6 }}
-                    placeholder="Why are you changing the status?"
-                    maxLength={500}
-                  />
+              <div>
+                <label className="block text-sm font-semibold" htmlFor="reason">
+                  Reason (optional, 1..500)
                 </label>
-                <div style={{ fontSize: 12, opacity: 0.7 }}>{reason.length}/500</div>
+                <textarea
+                  id="reason"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={4}
+                  className="mt-2 w-full rounded border p-2"
+                  placeholder="Why are you changing the status?"
+                  maxLength={500}
+                  disabled={disableActions}
+                />
+                <div className="mt-1 text-xs opacity-70">{reason.length}/500</div>
               </div>
-            </>
+            </div>
           )}
-        </div>
+        </Card>
       </div>
 
-      <div style={{ marginTop: 16, border: '1px solid #eee', padding: 12, borderRadius: 8 }}>
-        <h3 style={{ marginTop: 0 }}>Items</h3>
-        {details.items.length === 0 ? (
-          <div>Keine Items.</div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left' }}>
-                <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>SKU</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Name</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Qty</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Unit</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Line</th>
-              </tr>
-            </thead>
-            <tbody>
-              {details.items.map((it) => (
-                <tr key={it.productId}>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.sku}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.name}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.quantity}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
-                    {formatMoney(it.unitPriceCents, it.currency)}
-                  </td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
-                    {formatMoney(it.lineTotalCents, it.currency)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <Card className="p-4">
+        <h3 className="mb-3 text-base font-semibold">Items</h3>
 
-      <div style={{ marginTop: 16, border: '1px solid #eee', padding: 12, borderRadius: 8 }}>
-        <h3 style={{ marginTop: 0 }}>Status Timeline</h3>
-        {o.statusEvents.length === 0 ? (
-          <div>No events.</div>
+        {safeItems.length === 0 ? (
+          <div className="text-sm">Keine Items.</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left' }}>
-                <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>When</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>From</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>To</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Actor</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: 8 }}>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {o.statusEvents.map((ev) => (
-                <tr key={ev.id}>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{formatDate(ev.createdAt)}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{ev.fromStatus}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{ev.toStatus}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{ev.actorUserId ?? '—'}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{ev.reason ?? '—'}</td>
+          <div className="w-full overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="text-left">
+                  <th className="border-b p-2">SKU</th>
+                  <th className="border-b p-2">Name</th>
+                  <th className="border-b p-2">Qty</th>
+                  <th className="border-b p-2">Unit</th>
+                  <th className="border-b p-2">Line</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {safeItems.map((it) => (
+                  <tr key={it.productId} className="hover:bg-black/5">
+                    <td className="border-b p-2">{it.sku}</td>
+                    <td className="border-b p-2">{it.name}</td>
+                    <td className="border-b p-2">{it.quantity}</td>
+                    <td className="border-b p-2">{formatMoney(it.unitPriceCents, it.currency)}</td>
+                    <td className="border-b p-2">{formatMoney(it.lineTotalCents, it.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </Card>
+
+      <Card className="p-4">
+        <h3 className="mb-3 text-base font-semibold">Status Timeline</h3>
+
+        {safeStatusEvents.length === 0 ? (
+          <div className="text-sm">No events.</div>
+        ) : (
+          <div className="w-full overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="text-left">
+                  <th className="border-b p-2">When</th>
+                  <th className="border-b p-2">From</th>
+                  <th className="border-b p-2">To</th>
+                  <th className="border-b p-2">Actor</th>
+                  <th className="border-b p-2">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {safeStatusEvents.map((ev) => (
+                  <tr key={ev.id} className="hover:bg-black/5">
+                    <td className="border-b p-2">{formatDate(ev.createdAt)}</td>
+                    <td className="border-b p-2">{ev.fromStatus}</td>
+                    <td className="border-b p-2">{ev.toStatus}</td>
+                    <td className="border-b p-2">{ev.actorUserId ?? '—'}</td>
+                    <td className="border-b p-2">{ev.reason ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

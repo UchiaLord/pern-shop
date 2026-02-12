@@ -1,5 +1,6 @@
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+// apps/web/src/components/layout/Navbar.tsx
 import { useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -35,8 +36,8 @@ export function Navbar() {
   const q = searchParams.get('q') ?? '';
 
   const showSearch = useMemo(() => {
-    // Search only makes sense on /products (or root redirecting there)
-    return loc.pathname === '/products' || loc.pathname === '/';
+    // Search only on products listing
+    return loc.pathname === '/products';
   }, [loc.pathname]);
 
   function setQuery(next: string) {
@@ -81,7 +82,9 @@ export function Navbar() {
         </div>
 
         <nav className="hidden md:flex items-center gap-1">
+          <NavLink to="/" label="Home" />
           <NavLink to="/products" label="Products" />
+          {user && <NavLink to="/cart" label="Cart" />}
           {user && <NavLink to="/orders" label="Orders" />}
           {isAdmin && <NavLink to="/admin/products" label="Admin Products" />}
           {isAdmin && <NavLink to="/admin/orders" label="Admin Orders" />}
@@ -101,18 +104,12 @@ export function Navbar() {
           </div>
 
           {/* Actions */}
-          {user ? (
-            <Link to="/cart">
-              <Button variant="ghost">Cart</Button>
-            </Link>
-          ) : null}
-
           {!user ? (
             <>
-              <Link to="/login">
+              <Link to="/login" onClick={() => setMobileOpen(false)}>
                 <Button>Login</Button>
               </Link>
-              <Link to="/register">
+              <Link to="/register" onClick={() => setMobileOpen(false)}>
                 <Button variant="ghost">Register</Button>
               </Link>
             </>
@@ -122,6 +119,7 @@ export function Navbar() {
               onClick={async () => {
                 await logout();
                 setMobileOpen(false);
+                nav('/', { replace: true });
               }}
               title={user.email}
             >
@@ -143,6 +141,12 @@ export function Navbar() {
           ) : null}
 
           <div className="grid gap-2">
+            <Link to="/" onClick={() => setMobileOpen(false)}>
+              <Button variant="ghost" className="w-full justify-start">
+                Home
+              </Button>
+            </Link>
+
             <Link to="/products" onClick={() => setMobileOpen(false)}>
               <Button variant="ghost" className="w-full justify-start">
                 Products
@@ -150,11 +154,19 @@ export function Navbar() {
             </Link>
 
             {user ? (
-              <Link to="/orders" onClick={() => setMobileOpen(false)}>
-                <Button variant="ghost" className="w-full justify-start">
-                  Orders
-                </Button>
-              </Link>
+              <>
+                <Link to="/cart" onClick={() => setMobileOpen(false)}>
+                  <Button variant="ghost" className="w-full justify-start">
+                    Cart
+                  </Button>
+                </Link>
+
+                <Link to="/orders" onClick={() => setMobileOpen(false)}>
+                  <Button variant="ghost" className="w-full justify-start">
+                    Orders
+                  </Button>
+                </Link>
+              </>
             ) : null}
 
             {isAdmin ? (
@@ -170,14 +182,6 @@ export function Navbar() {
                   </Button>
                 </Link>
               </>
-            ) : null}
-
-            {user ? (
-              <Link to="/cart" onClick={() => setMobileOpen(false)}>
-                <Button variant="ghost" className="w-full justify-start">
-                  Cart
-                </Button>
-              </Link>
             ) : null}
           </div>
         </div>
