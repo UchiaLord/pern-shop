@@ -154,11 +154,11 @@ export const api = {
   },
 
   payments: {
-    /**
-     * POST /payments/create-intent
-     * returns: { orderId, clientSecret }
-     */
-    createIntent: () => request<{ orderId: number; clientSecret: string }>('/payments/create-intent', { method: 'POST' }),
+    // Backend: POST /payments/create-intent
+    createIntent: () =>
+      request<{ orderId: number; clientSecret: string }>('/payments/create-intent', {
+        method: 'POST',
+      }),
   },
 
   admin: {

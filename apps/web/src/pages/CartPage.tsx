@@ -1,4 +1,4 @@
-// apps/web/src/pages/CheckoutPage.tsx
+// apps/web/src/pages/CartPage.tsx
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -22,7 +22,7 @@ function calcLineTotalCents(item: EnrichedItem): number {
   return price * item.quantity;
 }
 
-export default function CheckoutPage() {
+export default function CartPage() {
   const nav = useNavigate();
 
   const [cart, setCart] = useState<Cart | null>(null);
@@ -30,7 +30,7 @@ export default function CheckoutPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
-  const [placing, setPlacing] = useState(false);
+  const [mutating, setMutating] = useState<Record<number, boolean>>({});
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -68,7 +68,6 @@ export default function CheckoutPage() {
   }, [enriched]);
 
   const currency = useMemo(() => {
-    // Prefer cart.currency if present, else infer from first known product, else EUR
     const fromCart = cart?.currency;
     if (fromCart && fromCart.trim().length === 3) return fromCart;
 
@@ -77,7 +76,6 @@ export default function CheckoutPage() {
   }, [cart?.currency, enriched]);
 
   const subtotalCents = useMemo(() => {
-    // Prefer cart.subtotalCents if present, else computed
     const fromCart = cart?.subtotalCents;
     if (typeof fromCart === 'number' && Number.isFinite(fromCart)) return fromCart;
     return computedSubtotalCents;
@@ -85,32 +83,39 @@ export default function CheckoutPage() {
 
   const isEmpty = !loading && !error && (cart?.items?.length ?? 0) === 0;
 
-  const placeOrder = useCallback(async () => {
-    if (placing) return;
-    if (!cart || cart.items.length === 0) return;
+  const removeItem = useCallback(
+    async (productId: number) => {
+      if (mutating[productId]) return;
 
-    setPlacing(true);
-    setError(null);
+      setMutating((prev) => ({ ...prev, [productId]: true }));
+      setError(null);
 
-    try {
-      const res = await api.orders.checkout();
-      nav(`/orders/${res.order.id}`, { replace: true });
-    } catch (err: unknown) {
-      setError(extractErrorMessage(err));
-    } finally {
-      setPlacing(false);
-    }
-  }, [cart, nav, placing]);
+      try {
+        const res = await api.cart.removeItem(productId);
+        setCart(res.cart);
+      } catch (err: unknown) {
+        setError(extractErrorMessage(err));
+        await reload();
+      } finally {
+        setMutating((prev) => {
+          const copy = { ...prev };
+          delete copy[productId];
+          return copy;
+        });
+      }
+    },
+    [mutating, reload],
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">Checkout</h2>
+        <h2 className="text-xl font-semibold">Cart</h2>
         <div className="flex gap-3">
-          <Link className="underline" to="/cart">
-            Back to cart
+          <Link className="underline" to="/products">
+            Continue shopping
           </Link>
-          <Button variant="ghost" onClick={reload} disabled={loading || placing}>
+          <Button variant="ghost" onClick={reload} disabled={loading}>
             {loading ? 'Loading…' : 'Reload'}
           </Button>
         </div>
@@ -131,7 +136,7 @@ export default function CheckoutPage() {
       {isEmpty ? (
         <EmptyState
           title="Cart is empty"
-          description="Add some products first, then come back to checkout."
+          description="Add some products first."
           action={
             <Link to="/products">
               <Button>Browse products</Button>
@@ -151,11 +156,12 @@ export default function CheckoutPage() {
                 const priceCents = it.product?.priceCents ?? 0;
                 const line = calcLineTotalCents(it);
                 const cur = it.product?.currency ?? currency;
+                const isBusy = Boolean(mutating[it.productId]);
 
                 return (
                   <div
                     key={it.productId}
-                    className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 pb-3"
+                    className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3"
                   >
                     <div className="min-w-[220px]">
                       <div className="text-sm font-semibold">{name}</div>
@@ -164,14 +170,20 @@ export default function CheckoutPage() {
                       </div>
                     </div>
 
-                    <div className="text-sm font-semibold">{formatCents(line, cur)}</div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-sm font-semibold">{formatCents(line, cur)}</div>
+                      <Button
+                        variant="ghost"
+                        onClick={() => void removeItem(it.productId)}
+                        disabled={isBusy}
+                        title="Remove item"
+                      >
+                        {isBusy ? 'Removing…' : 'Remove'}
+                      </Button>
+                    </div>
                   </div>
                 );
               })}
-            </div>
-
-            <div className="mt-4 text-xs opacity-70">
-              Hinweis: Dieser Checkout ist bewusst minimal (Day 29). Payment kommt als nächstes.
             </div>
           </Card>
 
@@ -196,12 +208,16 @@ export default function CheckoutPage() {
             </div>
 
             <div className="mt-4 space-y-2">
-              <Button className="w-full" onClick={placeOrder} disabled={placing || loading}>
-                {placing ? 'Placing…' : 'Place order'}
+              <Button
+                className="w-full"
+                onClick={() => nav('/checkout')}
+                disabled={loading || (cart?.items?.length ?? 0) === 0}
+              >
+                Go to checkout
               </Button>
 
               <Link to="/products" className="block">
-                <Button variant="ghost" className="w-full" disabled={placing || loading}>
+                <Button variant="ghost" className="w-full" disabled={loading}>
                   Continue shopping
                 </Button>
               </Link>
