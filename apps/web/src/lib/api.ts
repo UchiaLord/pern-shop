@@ -3,9 +3,12 @@ import type {
   AdminOrderDetails,
   ApiError,
   Cart,
+  CreatePaymentIntentResponse,
   OrderDetails,
   OrderStatus,
   OrderSummary,
+  OrderTimelineEvent,
+  OrderTimelineResponse,
   Product,
   User,
 } from './types';
@@ -54,6 +57,20 @@ type AuthInput = { email: string; password: string };
 function normalizeAuthInput(a: string | AuthInput, b?: string): AuthInput {
   if (typeof a === 'string') return { email: a, password: b ?? '' };
   return a;
+}
+
+function normalizeTimelineResponse(input: unknown): OrderTimelineResponse {
+  // Accept either:
+  // 1) { events: [...] }
+  // 2) [...]
+  if (Array.isArray(input)) {
+    return { events: input as OrderTimelineEvent[] };
+  }
+  if (input && typeof input === 'object') {
+    const maybe = (input as { events?: unknown }).events;
+    if (Array.isArray(maybe)) return { events: maybe as OrderTimelineEvent[] };
+  }
+  return { events: [] };
 }
 
 export const api = {
@@ -151,12 +168,18 @@ export const api = {
     getMine: (id: number) => request<OrderDetails>(`/orders/${id}`),
 
     get: (id: number) => request<OrderDetails>(`/orders/${id}`),
+
+    // Day 32: GET /orders/:id/timeline (user access)
+    getTimeline: async (id: number) => {
+      const raw = await request<unknown>(`/orders/${id}/timeline`);
+      return normalizeTimelineResponse(raw);
+    },
   },
 
   payments: {
     // Backend: POST /payments/create-intent
     createIntent: () =>
-      request<{ orderId: number; clientSecret: string }>('/payments/create-intent', {
+      request<CreatePaymentIntentResponse>('/payments/create-intent', {
         method: 'POST',
       }),
   },
@@ -172,6 +195,12 @@ export const api = {
           method: 'PATCH',
           body: JSON.stringify(input),
         }),
+
+      // Day 32: GET /admin/orders/:id/timeline (admin access)
+      getTimeline: async (id: number) => {
+        const raw = await request<unknown>(`/admin/orders/${id}/timeline`);
+        return normalizeTimelineResponse(raw);
+      },
     },
 
     products: {

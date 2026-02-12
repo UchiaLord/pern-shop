@@ -3,12 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { api } from '../lib/api';
-import type { AdminOrderDetails, OrderStatus } from '../lib/types';
+import type { AdminOrderDetails, OrderStatus, OrderTimelineEvent } from '../lib/types';
 import { extractErrorMessage } from '../lib/errors';
 
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import EmptyState from '../components/ui/EmptyState';
+
+import OrderTimeline from '../components/orders/OrderTimeline';
 
 function formatMoney(cents: number, currency: string) {
   return new Intl.NumberFormat('de-AT', { style: 'currency', currency }).format(cents / 100);
@@ -39,6 +41,21 @@ function normalizeStatusEvents(input: unknown) {
   return input as AdminOrderDetails['order']['statusEvents'];
 }
 
+function mapLegacyStatusEventsToTimeline(
+  events: AdminOrderDetails['order']['statusEvents'],
+): OrderTimelineEvent[] {
+  return (events ?? []).map((ev) => ({
+    id: ev.id,
+    createdAt: ev.createdAt,
+    fromStatus: ev.fromStatus ?? null,
+    toStatus: ev.toStatus ?? null,
+    actorUserId: ev.actorUserId ?? null,
+    reason: ev.reason ?? null,
+    source: null,
+    metadata: null,
+  }));
+}
+
 export default function AdminOrderDetailsPage() {
   const params = useParams();
   const id = Number(params.id);
@@ -53,6 +70,10 @@ export default function AdminOrderDetailsPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const [timeline, setTimeline] = useState<OrderTimelineEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+
   const allowed: OrderStatus[] = useMemo(() => {
     const raw = details?.order?.allowedNextStatuses;
     return normalizeAllowedNextStatuses(raw);
@@ -64,25 +85,48 @@ export default function AdminOrderDetailsPage() {
     [details],
   );
 
+  const mergedTimeline: OrderTimelineEvent[] = useMemo(() => {
+    // Prefer dedicated endpoint (includes source/metadata). Fallback to legacy embedded statusEvents.
+    if (timeline.length > 0) return timeline;
+    return mapLegacyStatusEventsToTimeline(safeStatusEvents);
+  }, [safeStatusEvents, timeline]);
+
   const reload = useCallback(async () => {
     if (!isValidId) return;
 
     setLoading(true);
     setError(null);
 
-    try {
-      const res = await api.admin.orders.get(id);
-      setDetails(res);
+    setTimelineLoading(true);
+    setTimelineError(null);
 
-      const nextAllowed = normalizeAllowedNextStatuses(res?.order?.allowedNextStatuses);
-      const first = nextAllowed[0] ?? '';
-      setNextStatus(first);
-      setReason('');
-    } catch (err: unknown) {
-      setError(extractErrorMessage(err));
-      // keep details as-is if it exists; otherwise stays null and loading UI handles it
+    try {
+      const [detailsRes, timelineRes] = await Promise.allSettled([
+        api.admin.orders.get(id),
+        api.admin.orders.getTimeline(id),
+      ]);
+
+      if (detailsRes.status === 'fulfilled') {
+        setDetails(detailsRes.value);
+
+        const nextAllowed = normalizeAllowedNextStatuses(detailsRes.value?.order?.allowedNextStatuses);
+        const first = nextAllowed[0] ?? '';
+        setNextStatus(first);
+        setReason('');
+      } else {
+        setError(extractErrorMessage(detailsRes.reason));
+      }
+
+      if (timelineRes.status === 'fulfilled') {
+        setTimeline(timelineRes.value.events);
+      } else {
+        // Soft fail – page stays usable; timeline falls back to embedded statusEvents.
+        setTimelineError(extractErrorMessage(timelineRes.reason));
+        setTimeline([]);
+      }
     } finally {
       setLoading(false);
+      setTimelineLoading(false);
     }
   }, [id, isValidId]);
 
@@ -305,36 +349,19 @@ export default function AdminOrderDetailsPage() {
       </Card>
 
       <Card className="p-4">
-        <h3 className="mb-3 text-base font-semibold">Status Timeline</h3>
-
-        {safeStatusEvents.length === 0 ? (
-          <div className="text-sm">No events.</div>
-        ) : (
-          <div className="w-full overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="text-left">
-                  <th className="border-b p-2">When</th>
-                  <th className="border-b p-2">From</th>
-                  <th className="border-b p-2">To</th>
-                  <th className="border-b p-2">Actor</th>
-                  <th className="border-b p-2">Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {safeStatusEvents.map((ev) => (
-                  <tr key={ev.id} className="hover:bg-black/5">
-                    <td className="border-b p-2">{formatDate(ev.createdAt)}</td>
-                    <td className="border-b p-2">{ev.fromStatus}</td>
-                    <td className="border-b p-2">{ev.toStatus}</td>
-                    <td className="border-b p-2">{ev.actorUserId ?? '—'}</td>
-                    <td className="border-b p-2">{ev.reason ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <OrderTimeline
+          title="Status Timeline"
+          events={mergedTimeline}
+          loading={timelineLoading}
+          error={timelineError}
+          emptyLabel="No events."
+        />
+        {timelineError ? (
+          <div className="mt-2 text-xs opacity-70">
+            Hinweis: Wenn <code>/admin/orders/:id/timeline</code> nicht verfügbar ist, wird auf{' '}
+            <code>order.statusEvents</code> zurückgefallen.
           </div>
-        )}
+        ) : null}
       </Card>
     </div>
   );

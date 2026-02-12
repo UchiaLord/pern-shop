@@ -5,8 +5,10 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
 import { formatCents } from '../lib/money';
-import type { OrderDetails, OrderStatus } from '../lib/types';
+import type { OrderDetails, OrderStatus, OrderTimelineEvent } from '../lib/types';
 import { EmptyState, ErrorBanner, Loading, OrderStatusBadge } from '../components/Status';
+
+import OrderTimeline from '../components/orders/OrderTimeline';
 
 const POLL_INTERVAL_MS = 1500;
 const POLL_MAX_MS = 30_000;
@@ -32,8 +34,11 @@ export default function OrderDetailsPage() {
 
   const status = data?.order?.status ?? null;
 
+  const [timeline, setTimeline] = useState<OrderTimelineEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+
   const shouldPoll = useMemo(() => {
-    // Only poll if we have data, order is pending, and we are within the max window
     if (!data) return false;
     if (status !== 'pending') return false;
     return true;
@@ -48,6 +53,24 @@ export default function OrderDetailsPage() {
     setPolling(false);
   }, []);
 
+  const loadTimeline = useCallback(async () => {
+    if (!validId) return;
+
+    setTimelineLoading(true);
+    setTimelineError(null);
+
+    try {
+      const res = await api.orders.getTimeline(orderId);
+      setTimeline(res.events);
+    } catch (err: unknown) {
+      // soft fail: page should still work
+      setTimelineError(extractErrorMessage(err));
+      setTimeline([]);
+    } finally {
+      setTimelineLoading(false);
+    }
+  }, [orderId, validId]);
+
   const reload = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!validId) return;
@@ -61,6 +84,8 @@ export default function OrderDetailsPage() {
         const res = await api.orders.get(orderId);
         setData(res);
 
+        void loadTimeline();
+
         const nextStatus = res?.order?.status;
         if (nextStatus && isTerminal(nextStatus)) {
           stopPolling();
@@ -68,11 +93,14 @@ export default function OrderDetailsPage() {
       } catch (err: unknown) {
         setError(extractErrorMessage(err));
         stopPolling();
+
+        setTimeline([]);
+        setTimelineError(null);
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [orderId, stopPolling, validId],
+    [loadTimeline, orderId, stopPolling, validId],
   );
 
   // initial load / id change
@@ -83,6 +111,10 @@ export default function OrderDetailsPage() {
       setLoading(false);
       setData(null);
       setError(null);
+
+      setTimeline([]);
+      setTimelineError(null);
+      setTimelineLoading(false);
       return;
     }
 
@@ -209,9 +241,25 @@ export default function OrderDetailsPage() {
         ))}
       </div>
 
+      <div className="rounded-lg border p-3">
+        <OrderTimeline
+          title="Timeline"
+          events={timeline}
+          loading={timelineLoading}
+          error={timelineError}
+          emptyLabel="Noch keine Timeline Events."
+        />
+        {timelineError ? (
+          <div className="mt-2 text-xs opacity-70">
+            Hinweis: Wenn <code>/orders/:id/timeline</code> nicht verfügbar ist, bleibt die Seite nutzbar – Timeline
+            ist dann leer.
+          </div>
+        ) : null}
+      </div>
+
       {order.status === 'pending' && !polling ? (
         <div className="text-xs opacity-70">
-          Wenn der Status nach ~30s nicht auf <code>paid</code> geht: Stripe CLI Webhook Forwarding prüfen +{" "}
+          Wenn der Status nach ~30s nicht auf <code>paid</code> geht: Stripe CLI Webhook Forwarding prüfen +{' '}
           <code>STRIPE_WEBHOOK_SECRET</code> in <code>apps/api/.env</code>.
         </div>
       ) : null}

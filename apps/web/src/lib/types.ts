@@ -56,6 +56,9 @@ export type OrderDetails = {
   items: OrderItem[];
 };
 
+/**
+ * Order Status Events (legacy events embedded in AdminOrder)
+ */
 export type OrderStatusEvent = {
   id: number;
   createdAt: string;
@@ -63,6 +66,27 @@ export type OrderStatusEvent = {
   toStatus: OrderStatus;
   actorUserId: number | null;
   reason: string | null;
+};
+
+/**
+ * Timeline Events (Day 32)
+ * Can contain more information than legacy OrderStatusEvent (source, metadata).
+ *
+ * Note: fromStatus/toStatus can be null for "created/checkout" style events.
+ */
+export type OrderTimelineEvent = {
+  id: number;
+  createdAt: string;
+  fromStatus: OrderStatus | null;
+  toStatus: OrderStatus | null;
+  actorUserId: number | null;
+  reason: string | null;
+  source?: string | null;
+  metadata?: unknown;
+};
+
+export type OrderTimelineResponse = {
+  events: OrderTimelineEvent[];
 };
 
 export type AdminOrder = OrderSummary & {

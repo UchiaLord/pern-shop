@@ -5,14 +5,11 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import type { OrderSummary } from '../lib/types';
 import { extractErrorMessage } from '../lib/errors';
+import { formatCents } from '../lib/money';
 
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import EmptyState from '../components/ui/EmptyState';
-
-function formatMoney(cents: number, currency: string) {
-  return new Intl.NumberFormat('de-AT', { style: 'currency', currency }).format(cents / 100);
-}
 
 function formatDate(iso: string) {
   try {
@@ -24,136 +21,118 @@ function formatDate(iso: string) {
   }
 }
 
-function normalizeOrders(input: unknown): OrderSummary[] {
-  if (typeof input !== 'object' || input === null) return [];
-  const maybe = input as { orders?: unknown };
-  return Array.isArray(maybe.orders) ? (maybe.orders as OrderSummary[]) : [];
+function StatusPill({ status }: { status: OrderSummary['status'] }) {
+  // Minimal UI-only pill (keine Abhängigkeit von components/Status nötig)
+  return <span className="rounded border px-2 py-1 text-xs">{status}</span>;
 }
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  const totals = useMemo(() => {
-    const count = orders.length;
-    const byStatus = orders.reduce<Record<string, number>>((acc, o) => {
-      acc[o.status] = (acc[o.status] ?? 0) + 1;
-      return acc;
-    }, {});
-    return { count, byStatus };
-  }, [orders]);
-
-  const fetchOrders = useCallback(async () => {
+  const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
       const res = await api.admin.orders.list();
-      const next = normalizeOrders(res);
-
-      setOrders(next);
-
-      // If backend shape is wrong, show a human-readable error, but keep UI stable.
-      if (!Array.isArray((res as { orders?: unknown }).orders)) {
-        setError('Unerwartete Server-Antwort: "orders" fehlt oder ist kein Array.');
-      }
+      setOrders(res.orders ?? []);
     } catch (err: unknown) {
-      setOrders([]);
       setError(extractErrorMessage(err));
+      setOrders([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void fetchOrders();
-  }, [fetchOrders]);
+    void reload();
+  }, [reload]);
 
-  const hasOrders = orders.length > 0;
+  const sorted = useMemo(() => {
+    const copy = [...orders];
+    copy.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return copy;
+  }, [orders]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">Admin – Orders</h2>
-        <Button onClick={fetchOrders} disabled={loading}>
-          {loading ? 'Loading…' : 'Reload'}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button onClick={reload} disabled={loading}>
+            {loading ? 'Loading…' : 'Reload'}
+          </Button>
+          <Link className="underline" to="/admin">
+            Back
+          </Link>
+        </div>
       </div>
 
-      <Card className="p-4">
-        <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <div>
-            <span className="font-semibold">Total:</span> {totals.count}
-          </div>
-          <div>
-            <span className="font-semibold">Pending:</span> {totals.byStatus.pending ?? 0}
-          </div>
-          <div>
-            <span className="font-semibold">Paid:</span> {totals.byStatus.paid ?? 0}
-          </div>
-          <div>
-            <span className="font-semibold">Shipped:</span> {totals.byStatus.shipped ?? 0}
-          </div>
-          <div>
-            <span className="font-semibold">Completed:</span> {totals.byStatus.completed ?? 0}
-          </div>
-          <div>
-            <span className="font-semibold">Cancelled:</span> {totals.byStatus.cancelled ?? 0}
-          </div>
-        </div>
-      </Card>
-
-      {error && (
+      {error ? (
         <Card className="p-4">
           <div className="text-sm text-red-600">{error}</div>
         </Card>
-      )}
+      ) : null}
 
-      {loading && (
+      {loading ? (
         <Card className="p-4">
-          <div className="text-sm">Lade Bestellungen…</div>
+          <div className="text-sm">Loading…</div>
         </Card>
-      )}
+      ) : null}
 
-      {!loading && !hasOrders ? (
-        <EmptyState title="Keine Orders" description="Es wurden noch keine Bestellungen gefunden." />
-      ) : (
-        <Card className="overflow-hidden p-0">
+      {!loading && sorted.length === 0 ? (
+        <Card className="p-4">
+          <EmptyState title="Keine Orders" description="Es existieren noch keine Orders im System." />
+        </Card>
+      ) : null}
+
+      {!loading && sorted.length > 0 ? (
+        <Card className="p-4">
           <div className="w-full overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="text-left">
-                  <th className="border-b p-3">ID</th>
-                  <th className="border-b p-3">Status</th>
-                  <th className="border-b p-3">Subtotal</th>
-                  <th className="border-b p-3">Created</th>
-                  <th className="border-b p-3">Updated</th>
-                  <th className="border-b p-3">Action</th>
+                  <th className="border-b p-2">Order</th>
+                  <th className="border-b p-2">Status</th>
+                  <th className="border-b p-2">UserId</th>
+                  <th className="border-b p-2">Subtotal</th>
+                  <th className="border-b p-2">Created</th>
+                  <th className="border-b p-2">Updated</th>
+                  <th className="border-b p-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {orders.map((o) => (
-                  <tr key={o.id} className="hover:bg-black/5">
-                    <td className="border-b p-3">{o.id}</td>
-                    <td className="border-b p-3">{o.status}</td>
-                    <td className="border-b p-3">
-                      {formatMoney(o.subtotalCents, o.currency ?? 'EUR')}
-                    </td>
-                    <td className="border-b p-3">{formatDate(o.createdAt)}</td>
-                    <td className="border-b p-3">{formatDate(o.updatedAt)}</td>
-                    <td className="border-b p-3">
-                      <Link className="underline" to={`/admin/orders/${o.id}`}>
-                        Open
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                {sorted.map((o) => {
+                  const cur = o.currency ?? 'EUR';
+                  return (
+                    <tr key={o.id} className="hover:bg-black/5">
+                      <td className="border-b p-2 font-medium">#{o.id}</td>
+                      <td className="border-b p-2">
+                        <StatusPill status={o.status} />
+                      </td>
+                      <td className="border-b p-2">{o.userId}</td>
+                      <td className="border-b p-2">{formatCents(o.subtotalCents, cur)}</td>
+                      <td className="border-b p-2">{formatDate(o.createdAt)}</td>
+                      <td className="border-b p-2">{formatDate(o.updatedAt)}</td>
+                      <td className="border-b p-2">
+                        <Link className="underline" to={`/admin/orders/${o.id}`}>
+                          Details
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          <div className="mt-3 text-xs opacity-70">
+            Hinweis: Timeline ist in den Order-Details verfügbar.
+          </div>
         </Card>
-      )}
+      ) : null}
     </div>
   );
 }
