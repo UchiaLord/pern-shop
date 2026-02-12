@@ -56,9 +56,6 @@ export type OrderDetails = {
   items: OrderItem[];
 };
 
-/**
- * Order Status Events (legacy events embedded in AdminOrder)
- */
 export type OrderStatusEvent = {
   id: number;
   createdAt: string;
@@ -70,9 +67,9 @@ export type OrderStatusEvent = {
 
 /**
  * Timeline Events (Day 32)
- * Can contain more information than legacy OrderStatusEvent (source, metadata).
- *
- * Note: fromStatus/toStatus can be null for "created/checkout" style events.
+ * Backend liefert zusätzlich source + metadata.
+ * - source: z.B. "checkout", "admin", "stripe-webhook", ...
+ * - metadata: beliebiges JSON (optional)
  */
 export type OrderTimelineEvent = {
   id: number;
@@ -81,8 +78,8 @@ export type OrderTimelineEvent = {
   toStatus: OrderStatus | null;
   actorUserId: number | null;
   reason: string | null;
-  source?: string | null;
-  metadata?: unknown;
+  source: string | null;
+  metadata: unknown | null;
 };
 
 export type OrderTimelineResponse = {

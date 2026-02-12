@@ -6,8 +6,8 @@ import { api } from '../lib/api';
 import { extractErrorMessage } from '../lib/errors';
 import { formatCents } from '../lib/money';
 import type { OrderDetails, OrderStatus, OrderTimelineEvent } from '../lib/types';
-import { EmptyState, ErrorBanner, Loading, OrderStatusBadge } from '../components/Status';
 
+import { EmptyState, ErrorBanner, Loading, OrderStatusBadge } from '../components/Status';
 import OrderTimeline from '../components/orders/OrderTimeline';
 
 const POLL_INTERVAL_MS = 1500;
@@ -30,15 +30,15 @@ export default function OrderDetailsPage() {
   const pollStartRef = useRef<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
 
-  const validId = Number.isFinite(orderId) && orderId > 0;
-
-  const status = data?.order?.status ?? null;
-
   const [timeline, setTimeline] = useState<OrderTimelineEvent[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState<string | null>(null);
 
+  const validId = Number.isFinite(orderId) && orderId > 0;
+  const status = data?.order?.status ?? null;
+
   const shouldPoll = useMemo(() => {
+    // Only poll if we have data and order is pending
     if (!data) return false;
     if (status !== 'pending') return false;
     return true;
@@ -61,9 +61,9 @@ export default function OrderDetailsPage() {
 
     try {
       const res = await api.orders.getTimeline(orderId);
-      setTimeline(res.events);
+      setTimeline(res.events ?? []);
     } catch (err: unknown) {
-      // soft fail: page should still work
+      // Soft fail: Order page should still work without timeline
       setTimelineError(extractErrorMessage(err));
       setTimeline([]);
     } finally {
@@ -84,8 +84,6 @@ export default function OrderDetailsPage() {
         const res = await api.orders.get(orderId);
         setData(res);
 
-        void loadTimeline();
-
         const nextStatus = res?.order?.status;
         if (nextStatus && isTerminal(nextStatus)) {
           stopPolling();
@@ -93,14 +91,11 @@ export default function OrderDetailsPage() {
       } catch (err: unknown) {
         setError(extractErrorMessage(err));
         stopPolling();
-
-        setTimeline([]);
-        setTimelineError(null);
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [loadTimeline, orderId, stopPolling, validId],
+    [orderId, stopPolling, validId],
   );
 
   // initial load / id change
@@ -111,7 +106,6 @@ export default function OrderDetailsPage() {
       setLoading(false);
       setData(null);
       setError(null);
-
       setTimeline([]);
       setTimelineError(null);
       setTimelineLoading(false);
@@ -119,7 +113,8 @@ export default function OrderDetailsPage() {
     }
 
     void reload();
-  }, [reload, stopPolling, validId]);
+    void loadTimeline();
+  }, [loadTimeline, reload, stopPolling, validId]);
 
   // polling loop: pending -> wait for webhook to mark paid
   useEffect(() => {
@@ -144,6 +139,7 @@ export default function OrderDetailsPage() {
 
     pollTimerRef.current = window.setTimeout(() => {
       void reload({ silent: true });
+      void loadTimeline();
     }, POLL_INTERVAL_MS);
 
     return () => {
@@ -152,7 +148,7 @@ export default function OrderDetailsPage() {
         pollTimerRef.current = null;
       }
     };
-  }, [reload, shouldPoll, stopPolling, validId]);
+  }, [loadTimeline, reload, shouldPoll, stopPolling, validId]);
 
   if (!validId) {
     return <EmptyState message="Ungültige Order-ID." />;
@@ -176,7 +172,10 @@ export default function OrderDetailsPage() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => void reload()}
+            onClick={() => {
+              void reload();
+              void loadTimeline();
+            }}
             className="rounded-md border px-3 py-1 text-sm"
             disabled={loading}
           >
@@ -247,12 +246,11 @@ export default function OrderDetailsPage() {
           events={timeline}
           loading={timelineLoading}
           error={timelineError}
-          emptyLabel="Noch keine Timeline Events."
+          emptyLabel="No events."
         />
         {timelineError ? (
           <div className="mt-2 text-xs opacity-70">
-            Hinweis: Wenn <code>/orders/:id/timeline</code> nicht verfügbar ist, bleibt die Seite nutzbar – Timeline
-            ist dann leer.
+            Hinweis: Wenn <code>/orders/:id/timeline</code> nicht verfügbar ist, bleibt die Order-Ansicht trotzdem nutzbar.
           </div>
         ) : null}
       </div>
